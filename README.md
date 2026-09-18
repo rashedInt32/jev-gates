@@ -7,6 +7,10 @@ Two calibrated gates for Claude Code, judged by [TypeSafe Jev](https://docs.type
 
 Both run in about a second, cost a fraction of a cent, and never approve anything. A wrong answer costs one prompt or one retry. It never costs a wrong write or a silent skip.
 
+![jev-gates: seven hook payloads replayed through both gates against the live API](demo/out/jev-gates.gif)
+
+A live run, nothing staged. Every probability and latency on screen is what Jev returned at render time. [MP4 version](demo/out/jev-gates.mp4).
+
 ## The problem
 
 CLAUDE.md works for twenty minutes. Then the context fills, the rules drift out of attention, and an edit quietly breaks one. You catch it in review.
@@ -137,8 +141,6 @@ npm run demo:render # records a live run with asciinema, renders GIF with agg an
 ```
 
 The demo replays hook payloads through the actual hook scripts against the live API. The edits and prompts mirror the sessions above, pointed at `demo/fixtures/project`. The "silently skipped" case uses a response written to omit the README ask, because Claude would not skip it silently on its own. Everything else, including every probability and latency, is whatever Jev returns at render time.
-
-![jev-gates demo](demo/out/jev-gates.gif)
 
 ## Related
 
