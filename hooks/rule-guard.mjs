@@ -25,14 +25,14 @@ import { lastUserPrompt, readTranscript } from "../lib/transcript.mjs";
 
 const TOOLS = new Set(["Edit", "Write", "MultiEdit", "Bash"]);
 
-function proposedChange(toolName, input) {
+function proposedChange(toolName, input, cwd) {
   if (toolName === "Write") return { content: input.content ?? "" };
   if (toolName === "Edit") return { old_string: input.old_string ?? "", new_string: input.new_string ?? "", replace_all: Boolean(input.replace_all) };
   if (toolName === "MultiEdit") {
     return { edits: (input.edits ?? []).map((e) => ({ old_string: e.old_string ?? "", new_string: e.new_string ?? "" })) };
   }
   if (toolName === "Bash") {
-    const writes = shellWrites(String(input.command ?? ""));
+    const writes = shellWrites(String(input.command ?? ""), { cwd });
     if (!writes) return null;
     return { shell_command: input.command, files_affected: writes.targets, operations: writes.operations };
   }
@@ -57,7 +57,7 @@ async function main() {
   const input = await readStdinJson();
   if (!input || input.hook_event_name !== "PreToolUse" || !TOOLS.has(input.tool_name)) return;
 
-  const change = proposedChange(input.tool_name, input.tool_input ?? {});
+  const change = proposedChange(input.tool_name, input.tool_input ?? {}, input.cwd);
   if (!change) return;
   const filePath = input.tool_name === "Bash" ? change.files_affected.join(",") : String(input.tool_input?.file_path ?? "");
   const size = JSON.stringify(change).length;
