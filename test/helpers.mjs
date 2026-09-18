@@ -12,9 +12,10 @@ export const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 /**
  * Start a stand-in API. `plan(id, question)` returns the probability for a
- * question; default 0.05. Every request body is recorded.
+ * noul question (default 0.05), or the chosen key for a choice question
+ * (default: the first option). Every request body is recorded.
  */
-export async function startMock(plan = () => 0.05) {
+export async function startMock(plan = () => undefined) {
   const requests = [];
   const state = { status: 200, plan };
   const server = createServer((req, res) => {
@@ -31,7 +32,15 @@ export async function startMock(plan = () => 0.05) {
       }
       const answers = {};
       for (const [id, q] of Object.entries(body.questions ?? {})) {
-        answers[id] = { type: "noul", noul: state.plan(id, q) };
+        const planned = state.plan(id, q);
+        if (q.type === "noul") {
+          answers[id] = { type: "noul", noul: typeof planned === "number" ? planned : 0.05 };
+        } else {
+          const keys = Object.keys(q.criteria);
+          const pick = typeof planned === "string" && keys.includes(planned) ? planned : keys[0];
+          const probabilities = Object.fromEntries(keys.map((k) => [k, k === pick ? 0.9 : 0.1 / (keys.length - 1)]));
+          answers[id] = { type: "choice", choice: pick, confidence: 0.9, probabilities };
+        }
       }
       res.writeHead(200);
       res.end(JSON.stringify({ model: "mock-jev", answers, usage: { input_tokens: 10, output_tokens: 2 } }));
@@ -72,7 +81,10 @@ export function runHook(script, input, env = {}) {
   });
 }
 
-/** Write a transcript in Claude Code's JSONL shape. */
+/**
+ * Write a transcript in Claude Code's JSONL shape. Each tool may carry a
+ * `result` string, recorded as the paired tool_result.
+ */
 export function writeTranscript(dir, { prompt, tools = [], assistantText = "", earlier = [] }) {
   const lines = [];
   let n = 0;
@@ -83,11 +95,19 @@ export function writeTranscript(dir, { prompt, tools = [], assistantText = "", e
   }
   push({ type: "user", message: { role: "user", content: prompt } });
   for (const t of tools) {
-    push({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: `t${n}`, name: t.name, input: t.input }] } });
-    push({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: `t${n}`, content: "done" }] } });
+    const id = `t${n}`;
+    push({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id, name: t.name, input: t.input }] } });
+    push({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: t.result ?? "done" }] } });
   }
   if (assistantText) push({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: assistantText }] } });
   const path = join(dir, "transcript.jsonl");
   writeFileSync(path, lines.join("\n") + "\n");
   return path;
+}
+
+export const KEY_VAR = ["TYPESAFE", "API", "KEY"].join("_");
+
+/** Environment for a hook run against a mock, with isolated data and home. */
+export function hookEnv(mock, extra = {}) {
+  return { [KEY_VAR]: "k", JEV_GATES_BASE_URL: mock.url, JEV_GATES_DIR: tempDir("data-"), HOME: tempDir("home-"), ...extra };
 }
