@@ -1,6 +1,6 @@
 {
   "name": "jev-gates",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Calibrated gates for Claude Code, judged by TypeSafe Jev: a rule guard for edits and a done gate for stops.",
   "type": "module",
