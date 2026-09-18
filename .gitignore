@@ -5,3 +5,4 @@ node_modules/
 demo/out/*
 !demo/out/jev-gates.gif
 !demo/out/jev-gates.mp4
+!demo/out/jev-gates-*.gif
