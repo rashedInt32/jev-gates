@@ -1,0 +1,21 @@
+{
+  "name": "jev-gates",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Calibrated gates for Claude Code, judged by TypeSafe Jev: a rule guard for edits and a done gate for stops.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rashedInt32/jev-gates.git"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "validate": "claude plugin validate .",
+    "demo": "node demo/run.mjs",
+    "demo:render": "asciinema rec --overwrite --window-size 112x32 --command 'npm run demo --silent' demo/out/jev-gates.cast && agg --cols 112 --rows 32 --theme monokai --font-size 16 --idle-time-limit 3 --last-frame-duration 4 demo/out/jev-gates.cast demo/out/jev-gates.gif && ffmpeg -v error -y -i demo/out/jev-gates.gif -movflags faststart -pix_fmt yuv420p -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2' demo/out/jev-gates.mp4"
+  },
+  "engines": {
+    "node": ">=20.12"
+  }
+}

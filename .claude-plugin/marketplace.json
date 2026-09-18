@@ -1,0 +1,22 @@
+{
+  "name": "jev-gates",
+  "description": "Calibrated gates for Claude Code, judged by TypeSafe Jev.",
+  "owner": {
+    "name": "rashed parvez",
+    "url": "https://github.com/rashedInt32"
+  },
+  "plugins": [
+    {
+      "name": "jev-gates",
+      "source": "./",
+      "displayName": "Jev Gates",
+      "description": "A rule guard that checks every edit against your CLAUDE.md before it lands, and a done gate that stops Claude from finishing while an ask in your prompt is still unaddressed.",
+      "version": "0.1.0",
+      "homepage": "https://github.com/rashedInt32/jev-gates",
+      "repository": "https://github.com/rashedInt32/jev-gates",
+      "license": "MIT",
+      "keywords": ["claude-code", "hooks", "typesafe", "jev", "guardrails"],
+      "category": "productivity"
+    }
+  ]
+}

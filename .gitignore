@@ -1,0 +1,7 @@
+node_modules/
+.env
+.env.*
+*.tgz
+demo/out/*
+!demo/out/jev-gates.gif
+!demo/out/jev-gates.mp4
