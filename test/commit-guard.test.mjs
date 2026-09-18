@@ -3,7 +3,7 @@ import test from "node:test";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { commitDiff, isGitCommit, parseCommitMessage } from "../lib/git.mjs";
+import { commitDiff, isGitCommit, parseCommitMessage, stagedByCommand } from "../lib/git.mjs";
 import { hookEnv, runHook, startMock, tempDir } from "./helpers.mjs";
 
 function repoWithStagedFix() {
@@ -42,6 +42,20 @@ test("isGitCommit matches commits in chains and ignores lookalikes", () => {
   assert.ok(!isGitCommit("echo 'git commit'"));
 });
 
+test("commitDiff honours a git add chained before the commit, including files git does not track yet", () => {
+  const cwd = repoWithStagedFix();
+  execFileSync("git", ["reset", "-q"], { cwd });
+  writeFileSync(join(cwd, "README.md"), "# app\nNow with OAuth login.\n");
+  assert.equal(commitDiff('git commit -m "x"', cwd).trim(), "", "nothing staged yet");
+  const chained = commitDiff('git add README.md math.js && git commit -m "x"', cwd);
+  assert.match(chained, /\+Now with OAuth login\./, "untracked file appears as an added file");
+  assert.match(chained, /\+export const add = \(a, b\) => a \+ b;/, "tracked change appears from the working tree");
+  assert.match(commitDiff('git add -A && git commit -m "x"', cwd), /Now with OAuth login/);
+  assert.match(commitDiff('git add . ; git commit -m "x"', cwd), /Now with OAuth login/);
+  assert.doesNotMatch(commitDiff('git add math.js && git commit -m "x"', cwd), /OAuth/, "only the named paths count");
+  assert.deepEqual(stagedByCommand("git add -p src && git commit"), null, "interactive staging is unknowable");
+});
+
 test("commitDiff reads the staged diff, or the working tree with -a", () => {
   const cwd = repoWithStagedFix();
   assert.match(commitDiff('git commit -m "x"', cwd), /\+export const add = \(a, b\) => a \+ b;/);
@@ -72,6 +86,24 @@ test("a message claiming work the diff does not show escalates with the claim na
 
     const log = readFileSync(join(env.JEV_GATES_DIR, "decisions.log"), "utf8");
     assert.match(log, /\tcommit\tactive\task\tclaims=2\/2\tunsupported=1\t/);
+  } finally {
+    await mock.close();
+  }
+});
+
+test("the subject line is a claim even when Jev scores it under the claim bar; body sentences still need to clear it", async () => {
+  // Subject scores 0.6 as a claim (a real live number for "feat: add OAuth login flow"),
+  // body sentence also 0.6. Neither is in the diff.
+  const mock = await startMock((id) => (id.startsWith("claim") ? 0.6 : 0.03));
+  const cwd = repoWithStagedFix();
+  try {
+    const env = hookEnv(mock);
+    const run = await runHook("commit-guard.mjs", bashInput(cwd, 'git commit -m "feat: add OAuth login flow with token refresh and tests" -m "Also tidied the logger."'), env);
+    const out = JSON.parse(run.stdout);
+    assert.equal(out.hookSpecificOutput.permissionDecision, "ask");
+    assert.match(out.hookSpecificOutput.permissionDecisionReason, /OAuth login flow/);
+    assert.doesNotMatch(out.hookSpecificOutput.permissionDecisionReason, /tidied the logger/, "a body sentence under the claim bar is not asserted");
+    assert.match(readFileSync(join(env.JEV_GATES_DIR, "decisions.log"), "utf8"), /\tcommit\tactive\task\tclaims=1\/2\tunsupported=1\t/);
   } finally {
     await mock.close();
   }

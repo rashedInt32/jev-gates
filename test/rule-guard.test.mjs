@@ -177,3 +177,30 @@ test("no key, no rules, an API failure, or an oversized change all mean no opini
     await mock.close();
   }
 });
+
+test("a shell command that writes a file is judged like an edit; a read-only command costs nothing", async () => {
+  const mock = await startMock(plan);
+  const cwd = project();
+  try {
+    const env = hookEnv(mock);
+    const bash = (command) => ({ hook_event_name: "PreToolUse", tool_name: "Bash", cwd, tool_input: { command } });
+
+    const hit = await runHook("rule-guard.mjs", bash("cat >> src/generated/types.ts <<'EOF'\nexport type X = 1;\nEOF"), env);
+    const out = JSON.parse(hit.stdout);
+    assert.equal(out.hookSpecificOutput.permissionDecision, "ask");
+    assert.match(out.hookSpecificOutput.permissionDecisionReason, /src\/generated/);
+    const body = mock.requests[0];
+    assert.equal(body.state.tool, "Bash");
+    assert.match(body.state.proposed_change.shell_command, /cat >> src\/generated/);
+    assert.deepEqual(body.state.proposed_change.files_affected, ["src/generated/types.ts"]);
+
+    const read = await runHook("rule-guard.mjs", bash("grep -rn console.log src | head"), env);
+    assert.equal(read.stdout, "");
+    assert.equal(mock.requests.length, 1, "read-only commands never reach the API");
+
+    const log = readFileSync(join(env.JEV_GATES_DIR, "decisions.log"), "utf8");
+    assert.match(log, /\tedit\tactive\task\tsrc\/generated\/types\.ts\t/);
+  } finally {
+    await mock.close();
+  }
+});

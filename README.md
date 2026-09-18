@@ -8,8 +8,8 @@ A live run, nothing staged. Every probability and latency on screen is what Jev 
 
 | Gate | Fires on | Catches |
 | --- | --- | --- |
-| **Rule guard** | every edit | a change that breaks a rule in your CLAUDE.md |
-| **Scope guard** | every edit | a change outside what you asked for |
+| **Rule guard** | every edit, including shell writes | a change that breaks a rule in your CLAUDE.md |
+| **Scope guard** | every edit, including shell writes | a change outside what you asked for |
 | **Intent guard** | every prompt | files edited when you only asked a question |
 | **Done gate** | every stop | an ask in your prompt left unaddressed |
 | **Claims gate** | every stop | "tests pass" when no test ever ran |
@@ -54,7 +54,7 @@ To try it from a checkout without installing: `claude --plugin-dir /path/to/jev-
 
 ![rule guard](demo/out/jev-gates-rules.gif)
 
-A PreToolUse hook on Edit, Write, and MultiEdit. Rules come from `CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`, and `.claude/jev-gates.md`, walking from the working directory up to your home, plus `~/.claude/CLAUDE.md`. List items and imperative lines count; headings, links, tables, and code do not. Prohibitions sort first when the cap of 64 trims. One request carries the proposed change and one yes/no per rule.
+A PreToolUse hook on Edit, Write, MultiEdit, and on any Bash command that writes, moves, or removes a file: redirects, `tee`, `sed -i`, `cp`, `mv`, `rm`, `git checkout --`, and inline or heredoc scripts that call a file-writing API. Claude edits through the shell at least as often as through the Edit tool, so a guard that only watched Edit saw a minority of edits. Read-only commands exit before any request is made, and writes under `/tmp` are ignored. Rules come from `CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`, and `.claude/jev-gates.md`, walking from the working directory up to your home, plus `~/.claude/CLAUDE.md`. List items and imperative lines count; headings, links, tables, and code do not. Prohibitions sort first when the cap of 64 trims. One request carries the proposed change and one yes/no per rule.
 
 ```
 Rule guard: this change probably violates a project rule:
@@ -96,7 +96,11 @@ Either do it now and report the real result, or correct the statement.
 
 ![commit guard](demo/out/jev-gates-commit.gif)
 
-A PreToolUse hook on Bash that only wakes for `git commit`. It parses the message from `-m`, repeated `-m`, `--message=`, a heredoc, or `-F`, reads the staged diff (or the working tree with `-a`), and checks each sentence that describes a change against what the diff actually contains.
+A PreToolUse hook on Bash that only wakes for `git commit`. It parses the message from `-m`, repeated `-m`, `--message=`, a heredoc, or `-F`, and checks each sentence that describes a change against what the diff actually contains.
+
+The diff is what the commit will record, read before anything runs: the index by default, the working tree with `-a`, and when a `git add` is chained earlier in the same command, the working-tree state of whatever it stages, including files git does not track yet. Without that, `git add X && git commit -m ...` would be judged against an empty index and pass.
+
+The subject line always counts as a claim. Asked "is this a claim?", Jev scores a terse conventional subject such as `feat: add OAuth login flow with token refresh and tests` around 0.6, under the claim bar, so the diff check never got to speak even though it scored the same message at 0.03 in the diff. A commit subject is a change claim by definition. Body sentences still have to clear `JEV_GATES_CLAIM_THRESHOLD`, since they carry context and motivation as often as claims.
 
 ## Rules every gate follows
 
@@ -113,7 +117,7 @@ Six gates do not mean six requests. The rule and scope guards share one request 
 | Moment | Requests |
 | --- | ---: |
 | You send a prompt | 1 |
-| Claude edits a file | 1 (cached when the change repeats) |
+| Claude edits a file, with the Edit tool or a shell write | 1 (cached when the change repeats) |
 | Claude runs `git commit` | 1 |
 | Claude tries to stop | 1 |
 
@@ -131,7 +135,7 @@ Through the environment, for example in the `env` block of `~/.claude/settings.j
 | `JEV_GATES_INTENT_THRESHOLD` | `0.8` | answer-only probability needed to treat a prompt as a question |
 | `JEV_GATES_REQUEST_THRESHOLD` | `0.6` | probability at or above which a sentence counts as an ask |
 | `JEV_GATES_DONE_THRESHOLD` | `0.4` | addressed probability at or below which an ask is missing |
-| `JEV_GATES_CLAIM_THRESHOLD` | `0.7` | probability at or above which a sentence counts as a claim |
+| `JEV_GATES_CLAIM_THRESHOLD` | `0.7` | probability at or above which a sentence counts as a claim; a commit subject line always does |
 | `JEV_GATES_EVIDENCE_THRESHOLD` | `0.3` | evidence probability at or below which a claim is unsupported |
 | `JEV_GATES_COMMIT_THRESHOLD` | `0.3` | in-diff probability at or below which a commit claim is flagged |
 | `JEV_GATES_RULE_FILES` | unset | colon-separated rule files; replaces the CLAUDE.md walk |

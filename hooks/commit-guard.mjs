@@ -6,6 +6,10 @@
 // that change. A message that claims work the diff does not show escalates
 // with the claim named, before the commit is made.
 //
+// A `git add` chained before the commit is honoured: the diff covers what it
+// will stage, read from the working tree, so `git add X && git commit` cannot
+// slip through on an empty index.
+//
 // Any failure means no opinion: exit 0 with no output.
 
 import { ask, clip, log, noul, readConfig, readKey, readStdinJson, writeLast } from "../lib/jev.mjs";
@@ -65,8 +69,20 @@ async function main() {
   });
 
   const result = await ask({ config, key, state, questions });
-  const scored = claims.map((text, i) => ({ claim: text, isClaim: result.answers[`claim${i}`], inDiff: result.answers[`evidence${i}`] }));
-  const asserted = scored.filter((s) => s.isClaim >= config.claimThreshold);
+  // The subject line is a change claim by definition: that is what a commit
+  // subject is for. Asking Jev "is this a claim?" about a terse conventional
+  // subject like "feat: add OAuth login flow" scores around 0.6, under the
+  // claim bar, so the diff check (which was right) never got to speak. Body
+  // sentences still need to clear the bar, since they carry context and
+  // motivation as often as claims.
+  const subject = message.split("\n")[0].trim();
+  const scored = claims.map((text, i) => ({
+    claim: text,
+    subject: subject.includes(text),
+    isClaim: result.answers[`claim${i}`],
+    inDiff: result.answers[`evidence${i}`],
+  }));
+  const asserted = scored.filter((s) => s.subject || s.isClaim >= config.claimThreshold);
   const unsupported = asserted.filter((s) => s.inDiff <= config.commitThreshold);
   const decision = unsupported.length > 0 ? (config.mode === "active" ? "ask" : "would-ask") : "pass";
 
