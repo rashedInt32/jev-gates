@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}\"/hooks/intent-guard.mjs",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit",
@@ -10,6 +21,16 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}\"/hooks/commit-guard.mjs",
+            "timeout": 15
+          }
+        ]
       }
     ],
     "Stop": [
@@ -17,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}\"/hooks/done-gate.mjs",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}\"/hooks/stop-gate.mjs",
             "timeout": 20
           }
         ]

@@ -1,6 +1,6 @@
 {
   "name": "jev-gates",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Calibrated gates for Claude Code, judged by TypeSafe Jev: a rule guard for edits and a done gate for stops.",
   "type": "module",
@@ -13,7 +13,14 @@
     "test": "node --test test/*.test.mjs",
     "validate": "claude plugin validate .",
     "demo": "node demo/run.mjs",
-    "demo:render": "asciinema rec --overwrite --window-size 112x32 --command 'npm run demo --silent' demo/out/jev-gates.cast && agg --cols 112 --rows 32 --theme monokai --font-size 16 --idle-time-limit 3 --last-frame-duration 4 demo/out/jev-gates.cast demo/out/jev-gates.gif && ffmpeg -v error -y -i demo/out/jev-gates.gif -movflags faststart -pix_fmt yuv420p -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2' demo/out/jev-gates.mp4"
+    "demo:rules": "asciinema rec --overwrite --window-size 108x16 --command 'node demo/run.mjs rules' demo/out/rules.cast && agg --cols 108 --rows 16 --theme monokai --font-size 16 --idle-time-limit 3 --last-frame-duration 4 demo/out/rules.cast demo/out/jev-gates-rules.gif",
+    "demo:scope": "asciinema rec --overwrite --window-size 108x14 --command 'node demo/run.mjs scope' demo/out/scope.cast && agg --cols 108 --rows 14 --theme monokai --font-size 16 --idle-time-limit 3 --last-frame-duration 4 demo/out/scope.cast demo/out/jev-gates-scope.gif",
+    "demo:intent": "asciinema rec --overwrite --window-size 108x14 --command 'node demo/run.mjs intent' demo/out/intent.cast && agg --cols 108 --rows 14 --theme monokai --font-size 16 --idle-time-limit 3 --last-frame-duration 4 demo/out/intent.cast demo/out/jev-gates-intent.gif",
+    "demo:done": "asciinema rec --overwrite --window-size 108x20 --command 'node demo/run.mjs done' demo/out/done.cast && agg --cols 108 --rows 20 --theme monokai --font-size 16 --idle-time-limit 3 --last-frame-duration 4 demo/out/done.cast demo/out/jev-gates-done.gif",
+    "demo:claims": "asciinema rec --overwrite --window-size 108x16 --command 'node demo/run.mjs claims' demo/out/claims.cast && agg --cols 108 --rows 16 --theme monokai --font-size 16 --idle-time-limit 3 --last-frame-duration 4 demo/out/claims.cast demo/out/jev-gates-claims.gif",
+    "demo:commit": "asciinema rec --overwrite --window-size 108x16 --command 'node demo/run.mjs commit' demo/out/commit.cast && agg --cols 108 --rows 16 --theme monokai --font-size 16 --idle-time-limit 3 --last-frame-duration 4 demo/out/commit.cast demo/out/jev-gates-commit.gif",
+    "demo:all": "asciinema rec --overwrite --window-size 108x60 --command 'node demo/run.mjs all' demo/out/all.cast && agg --cols 108 --rows 60 --theme monokai --font-size 16 --idle-time-limit 3 --last-frame-duration 4 demo/out/all.cast demo/out/jev-gates.gif && ffmpeg -v error -y -i demo/out/jev-gates.gif -movflags faststart -pix_fmt yuv420p -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2' demo/out/jev-gates.mp4",
+    "demo:render": "npm run demo:all && npm run demo:rules && npm run demo:scope && npm run demo:intent && npm run demo:done && npm run demo:claims && npm run demo:commit"
   },
   "engines": {
     "node": ">=20.12"
