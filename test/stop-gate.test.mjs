@@ -181,3 +181,128 @@ test("claims gate stands down when the transcript records no tool activity", asy
     await mock.close();
   }
 });
+
+// ── Proof gate ──────────────────────────────────────────────────────────────
+
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+
+/** A repo with one committed file, then an uncommitted edit that flips an operator and a limit. */
+function repoWithEdit() {
+  const root = tempDir("repo-");
+  const git = (...a) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: root, stdio: "ignore" });
+  git("init", "-q");
+  mkdirSync(join(root, "src"));
+  writeFileSync(join(root, "src/math.js"), "export function add(a, b) {\n  return a - b;\n}\n");
+  git("add", "-A");
+  git("commit", "-q", "-m", "init");
+  writeFileSync(join(root, "src/math.js"), "export function add(a, b) {\n  if (b === 0) return a;\n  return a + b;\n}\n");
+  return root;
+}
+
+const proofPlan = (evidence) => (id, q) => {
+  if (id.startsWith("risk")) return 0.92;
+  if (id.startsWith("proof")) return evidence;
+  if (id.startsWith("claim") || id.startsWith("evidence")) return id.startsWith("claim") ? 0.1 : 0.9;
+  return 0.9;
+};
+
+test("proof gate: a risky edit with no run after it blocks the stop and names the change", async () => {
+  const mock = await startMock(proofPlan(0.06));
+  const root = repoWithEdit();
+  try {
+    const transcript = writeTranscript(tempDir(), { prompt: "Fix add() in src/math.js.", tools: [{ name: "Edit", input: { file_path: join(root, "src/math.js") }, result: "ok" }] });
+    const env = hookEnv(mock);
+    const run = await runHook("stop-gate.mjs", stopInput(transcript, { cwd: root, last_assistant_message: "Fixed the operator." }), env);
+    assert.equal(run.code, 2);
+    assert.match(run.stderr, /Proof gate: \d+ changes? you made this turn/);
+    assert.match(run.stderr, /src\/math\.js:\d+ branch changed in add/);
+    assert.match(run.stderr, /p_evidence=0\.06/);
+
+    const body = mock.requests[0];
+    const changes = body.state.changes_made_this_turn;
+    assert.ok(Array.isArray(changes) && changes.length >= 1, "obligations travel in the state");
+    assert.equal(changes[0].edited_at_seq, 0);
+    assert.equal(body.state.tool_calls_this_turn_with_results[0].seq, 0, "activity carries seq");
+    assert.equal(Object.keys(body.questions).filter((i) => i.startsWith("risk")).length, changes.length);
+    assert.equal(Object.keys(body.questions).filter((i) => i.startsWith("proof")).length, changes.length);
+
+    const log = readFileSync(join(env.JEV_GATES_DIR, "decisions.log"), "utf8");
+    assert.match(log, /\tproof\tactive\tblock\tchanges=\d+\/\d+\tunproven=\d+\t/);
+    const last = JSON.parse(readFileSync(join(env.JEV_GATES_DIR, "last-proof.json"), "utf8"));
+    assert.equal(last.decision, "block");
+    assert.equal(last.repo, execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: root, encoding: "utf8" }).trim());
+    assert.ok(last.scored.every((s) => typeof s.risk === "number" && typeof s.proof === "number"));
+    const keyedDir = join(env.JEV_GATES_DIR, "proof");
+    const keyed = readdirSync(keyedDir);
+    assert.equal(keyed.length, 1, "one keyed copy exists for jev-lens");
+    assert.equal(JSON.parse(readFileSync(join(keyedDir, keyed[0]), "utf8")).decision, "block");
+  } finally {
+    await mock.close();
+  }
+});
+
+test("proof gate: a test run after the edit is evidence and lets Claude stop", async () => {
+  const mock = await startMock(proofPlan(0.93));
+  const root = repoWithEdit();
+  try {
+    const transcript = writeTranscript(tempDir(), {
+      prompt: "Fix add() in src/math.js.",
+      tools: [
+        { name: "Edit", input: { file_path: join(root, "src/math.js") }, result: "ok" },
+        { name: "Bash", input: { command: "npm test" }, result: "✔ add 3 passing" },
+      ],
+    });
+    const env = hookEnv(mock);
+    const run = await runHook("stop-gate.mjs", stopInput(transcript, { cwd: root, last_assistant_message: "Fixed the operator and the tests pass." }), env);
+    assert.equal(run.code, 0, run.stderr);
+    assert.match(readFileSync(join(env.JEV_GATES_DIR, "decisions.log"), "utf8"), /\tproof\tactive\tpass\t/);
+    assert.equal(mock.requests[0].state.tool_calls_this_turn_with_results[1].seq, 1);
+  } finally {
+    await mock.close();
+  }
+});
+
+test("proof gate: off switch, non-repo cwd, and a turn with no edits all send no proof questions", async () => {
+  const mock = await startMock(proofPlan(0.06));
+  const root = repoWithEdit();
+  try {
+    const edit = writeTranscript(tempDir(), { prompt: "Fix add() in src/math.js.", tools: [{ name: "Edit", input: { file_path: join(root, "src/math.js") }, result: "ok" }] });
+    const noQuestions = (body) => !Object.keys(body.questions).some((i) => i.startsWith("risk") || i.startsWith("proof"));
+
+    const off = await runHook("stop-gate.mjs", stopInput(edit, { cwd: root }), hookEnv(mock, { JEV_GATES_PROOF: "off" }));
+    assert.equal(off.code, 0);
+    assert.ok(noQuestions(mock.requests.at(-1)));
+
+    const plain = tempDir("plain-");
+    writeFileSync(join(plain, "x.js"), "1");
+    const noRepo = writeTranscript(tempDir(), { prompt: "Touch x.js please.", tools: [{ name: "Edit", input: { file_path: join(plain, "x.js") }, result: "ok" }] });
+    const env = hookEnv(mock);
+    const outside = await runHook("stop-gate.mjs", stopInput(noRepo, { cwd: plain }), env);
+    assert.equal(outside.code, 0);
+    assert.ok(noQuestions(mock.requests.at(-1)));
+    assert.match(readFileSync(join(env.JEV_GATES_DIR, "decisions.log"), "utf8"), /\tproof\tactive\tno-repo\t/);
+
+    const readOnly = writeTranscript(tempDir(), { prompt: "Explain add() in src/math.js.", tools: [{ name: "Read", input: { file_path: join(root, "src/math.js") }, result: "..." }] });
+    const nothing = await runHook("stop-gate.mjs", stopInput(readOnly, { cwd: root }), hookEnv(mock));
+    assert.equal(nothing.code, 0);
+    assert.ok(noQuestions(mock.requests.at(-1)));
+  } finally {
+    await mock.close();
+  }
+});
+
+test("proof gate: shadow mode logs would-block and never exits 2", async () => {
+  const mock = await startMock(proofPlan(0.06));
+  const root = repoWithEdit();
+  try {
+    const transcript = writeTranscript(tempDir(), { prompt: "Fix add() in src/math.js.", tools: [{ name: "Edit", input: { file_path: join(root, "src/math.js") }, result: "ok" }] });
+    const env = hookEnv(mock, { JEV_GATES: "shadow" });
+    const run = await runHook("stop-gate.mjs", stopInput(transcript, { cwd: root }), env);
+    assert.equal(run.code, 0);
+    assert.equal(run.stderr, "");
+    assert.match(readFileSync(join(env.JEV_GATES_DIR, "decisions.log"), "utf8"), /\tproof\tshadow\twould-block\t/);
+  } finally {
+    await mock.close();
+  }
+});

@@ -1,6 +1,6 @@
 # jev-gates
 
-Six calibrated gates for Claude Code, judged by [TypeSafe Jev](https://docs.typesafe.ai). Each one escalates. None of them ever approves.
+Seven calibrated gates for Claude Code, judged by [TypeSafe Jev](https://docs.typesafe.ai). Each one escalates. None of them ever approves.
 
 ![jev-gates: every gate replayed through the real hooks against the live API](demo/out/jev-gates.gif)
 
@@ -13,6 +13,7 @@ A live run, nothing staged. Every probability and latency on screen is what Jev 
 | **Intent guard** | every prompt | files edited when you only asked a question |
 | **Done gate** | every stop | an ask in your prompt left unaddressed |
 | **Claims gate** | every stop | "tests pass" when no test ever ran |
+| **Proof gate** | every stop | a risky change that nothing ran, tested, or checked after the edit |
 | **Commit guard** | `git commit` | a message claiming work the diff does not show |
 
 Each gate costs about a second and a fraction of a cent. A wrong answer costs one permission prompt or one retry. It never costs a wrong write, a silent skip, or a false claim you believed.
@@ -24,6 +25,8 @@ CLAUDE.md works for twenty minutes. Then the context fills, the rules drift out 
 Claude says done when it is not. You ask for three things, it does two, writes a confident summary, and stops.
 
 Claude says the suite is green when nothing ran. You find out later.
+
+Claude changes a default, adds a branch, and stops. It never claimed to test it, so nothing catches that it never did. You read the whole diff to find out what still needs checking.
 
 Every one of those is the same shape: a fixed list to check, one piece of evidence, a yes or no per item, on every edit or every stop. That has to be fast and nearly free or you cannot afford to run it every time. An LLM judge takes seconds and returns prose you must parse. Jev returns a calibrated probability in about a second, and you pick the threshold.
 
@@ -92,6 +95,23 @@ Claims gate: 1 statement in your reply is not supported by anything you ran this
 Either do it now and report the real result, or correct the statement.
 ```
 
+### Proof gate
+
+Shares the Stop request with the done and claims gates. The claims gate checks what Claude *said*; the proof gate checks what Claude *did*. The files edited this turn, through the Edit tool or a shell write, are diffed against HEAD and split in code into obligations: a changed signature, a new or altered branch, a changed literal, a changed error path, a deleted file, or a removed or skipped test. Comment, import, markdown, and lockfile changes are never obligations. Edits to test files are not either, because a test is its own proof when it runs.
+
+Two questions per obligation. Could this change alter runtime behaviour, so that it needs to be exercised before it is trusted? And do the tool results *after* the edit show it being exercised: a test run whose output covers it, a script that ran the changed path, a typecheck for a signature change? Reading or editing the file is not evidence. A run before the edit is not evidence. A risky change with no evidence blocks the stop once.
+
+```
+Proof gate: 2 changes you made this turn have no evidence of being exercised:
+- src/retry.js:1 signature of retry changed (p_risk=0.92, p_evidence=0.04)
+- src/retry.js:4 error handling changed in retry: if (e.fatal) throw e; (p_risk=0.95, p_evidence=0.04)
+Run something that exercises each one now, such as the covering test, a script, or the command itself, and report the real output. If nothing can exercise it, say plainly in your reply that it is unverified.
+```
+
+The enumeration is the safety boundary. Jev can only ask for proof of what the code lists, so the list favours recall: a spurious obligation costs one low risk score, a missed one costs coverage. Each obligation carries the sequence number of the edit that produced it, and every tool call carries its own, so "after the edit" is a fact in the state rather than an inference.
+
+The scored result is written to `last-proof.json` and to `proof/<repo-key>.json`, keyed the way [jev-lens](https://github.com/rashedInt32/jev-lens) keys repos, so the lens can show the unverified changes next to the files that need a look.
+
 ### Commit guard
 
 ![commit guard](demo/out/jev-gates-commit.gif)
@@ -112,7 +132,7 @@ The subject line always counts as a claim. Asked "is this a claim?", Jev scores 
 
 ## Cost
 
-Six gates do not mean six requests. The rule and scope guards share one request per edit. The done and claims gates share one request per stop. The intent guard is one request per prompt, and its marker path costs nothing.
+Seven gates do not mean seven requests. The rule and scope guards share one request per edit. The done, claims, and proof gates share one request per stop. The intent guard is one request per prompt, and its marker path costs nothing.
 
 | Moment | Requests |
 | --- | ---: |
@@ -128,7 +148,7 @@ Through the environment, for example in the `env` block of `~/.claude/settings.j
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `JEV_GATES` | `active` | `active`, `shadow` (log only), or `off` |
-| `JEV_GATES_RULES` / `_SCOPE` / `_INTENT` / `_DONE` / `_CLAIMS` / `_COMMIT` | on | set any to `off` to disable that gate |
+| `JEV_GATES_RULES` / `_SCOPE` / `_INTENT` / `_DONE` / `_CLAIMS` / `_PROOF` / `_COMMIT` | on | set any to `off` to disable that gate |
 | `JEV_GATES_EDIT_THRESHOLD` | `0.8` | violation probability at or above which the rule guard escalates |
 | `JEV_GATES_EDIT_ACTION` | `ask` | `ask` prompts you; `deny` hands the reason back to Claude |
 | `JEV_GATES_SCOPE_THRESHOLD` | `0.2` | in-scope probability at or below which a change is flagged |
@@ -137,9 +157,11 @@ Through the environment, for example in the `env` block of `~/.claude/settings.j
 | `JEV_GATES_DONE_THRESHOLD` | `0.4` | addressed probability at or below which an ask is missing |
 | `JEV_GATES_CLAIM_THRESHOLD` | `0.7` | probability at or above which a sentence counts as a claim; a commit subject line always does |
 | `JEV_GATES_EVIDENCE_THRESHOLD` | `0.3` | evidence probability at or below which a claim is unsupported |
+| `JEV_GATES_RISK_THRESHOLD` | `0.7` | probability at or above which a change needs proof |
+| `JEV_GATES_PROOF_THRESHOLD` | `0.3` | evidence probability at or below which a risky change is unproven |
 | `JEV_GATES_COMMIT_THRESHOLD` | `0.3` | in-diff probability at or below which a commit claim is flagged |
 | `JEV_GATES_RULE_FILES` | unset | colon-separated rule files; replaces the CLAUDE.md walk |
-| `JEV_GATES_MAX_RULES` / `_MAX_ASKS` / `_MAX_CLAIMS` | 64 / 24 / 16 | per-request caps |
+| `JEV_GATES_MAX_RULES` / `_MAX_ASKS` / `_MAX_CLAIMS` / `_MAX_CHANGES` | 64 / 24 / 16 / 16 | per-request caps |
 | `JEV_GATES_MAX_CHARS` | `40000` | largest state sent; above it the gate skips |
 | `JEV_GATES_TIMEOUT_MS` | `8000` | per-request timeout; on timeout the gate has no opinion |
 | `JEV_GATES_MODEL` | `jev-latest` | model id |
@@ -151,7 +173,7 @@ Start in `shadow` to watch before letting it intervene:
 tail -f ~/.claude/jev-gates/decisions.log
 ```
 
-Lines are tab separated: time, gate, mode, decision, then details. `last-edit.json`, `last-scope.json`, `last-intent.json`, `last-done.json`, `last-claims.json`, and `last-commit.json` hold the full scored breakdown of the most recent decision of each kind.
+Lines are tab separated: time, gate, mode, decision, then details. `last-edit.json`, `last-scope.json`, `last-intent.json`, `last-done.json`, `last-claims.json`, `last-proof.json`, and `last-commit.json` hold the full scored breakdown of the most recent decision of each kind.
 
 ## Calibration
 
@@ -169,6 +191,10 @@ From live Claude Code sessions on 2026-09-18, one run each. A small sample, not 
 | One part declined out loud with a reason | done gate | pass | 0.96 | 1133 ms |
 | One part silently skipped (omission induced) | done gate | block | 0.03 | 953 ms |
 | Reply claims a test run that never happened (replayed) | claims gate | block | 0.03 | 960 ms |
+| Signature, branch, literal, and throw changed; nothing ran after | proof gate | block | 0.04 to 0.07 evidence | 968 ms |
+| Same edit; the covering suite ran after it | proof gate | pass | 0.74 to 0.94 evidence | 965 ms |
+| Same edit; the suite ran *before* it | proof gate | block | 0.15 to 0.19 evidence | 978 ms |
+| Same edit; an unrelated suite ran after it | proof gate | block | 0.13 to 0.15 evidence | 931 ms |
 | Commit message claims tests that are not staged | commit guard | ask | 0.04 | 1107 ms |
 
 Two findings worth your attention, both from real sessions rather than fixtures.
@@ -189,7 +215,7 @@ Two findings worth your attention, both from real sessions rather than fixtures.
 ## Development
 
 ```sh
-npm test             # 28 offline tests against a local stand-in for the API
+npm test             # 48 offline tests against a local stand-in for the API
 npm run validate     # claude plugin validate .
 npm run demo         # live: every scene
 npm run demo claims  # live: one scene
