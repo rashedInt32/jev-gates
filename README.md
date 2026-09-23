@@ -9,7 +9,7 @@ A live run, nothing staged. Every probability and latency on screen is what Jev 
 | Gate | Fires on | Catches |
 | --- | --- | --- |
 | **Rule guard** | every edit, including shell writes | a change that breaks a rule in your CLAUDE.md |
-| **Scope guard** | every edit, including shell writes | a change outside what you asked for |
+| **Scope guard** (opt-in) | every edit, including shell writes | a change outside what you asked for |
 | **Intent guard** | every prompt | files edited when you only asked a question |
 | **Done gate** | every stop | an ask in your prompt left unaddressed |
 | **Claims gate** | every stop | "tests pass" when no test ever ran |
@@ -68,6 +68,8 @@ Change the approach so the rule holds, or explain to the user why an exception i
 ### Scope guard
 
 ![scope guard](demo/out/jev-gates-scope.gif)
+
+Off by default. Set `JEV_GATES_SCOPE=on` to enable it. It asks before an edit, and in real use most in-scope edits scored close to its threshold, so it interrupted far more often than it caught drift.
 
 Rides along in the same request as the rule guard, so it is free. It compares the change against the prompt you actually typed. Changes the ask requires, and the imports, types, and tests needed to make them work, are in scope. Unrelated refactors, renames, and drive-by cleanups are not.
 
@@ -148,7 +150,8 @@ Through the environment, for example in the `env` block of `~/.claude/settings.j
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `JEV_GATES` | `active` | `active`, `shadow` (log only), or `off` |
-| `JEV_GATES_RULES` / `_SCOPE` / `_INTENT` / `_DONE` / `_CLAIMS` / `_PROOF` / `_COMMIT` | on | set any to `off` to disable that gate |
+| `JEV_GATES_RULES` / `_INTENT` / `_DONE` / `_CLAIMS` / `_PROOF` / `_COMMIT` | on | set any to `off` to disable that gate |
+| `JEV_GATES_SCOPE` | off | set to `on` to enable the scope guard |
 | `JEV_GATES_EDIT_THRESHOLD` | `0.8` | violation probability at or above which the rule guard escalates |
 | `JEV_GATES_EDIT_ACTION` | `ask` | `ask` prompts you; `deny` hands the reason back to Claude |
 | `JEV_GATES_SCOPE_THRESHOLD` | `0.2` | in-scope probability at or below which a change is flagged |

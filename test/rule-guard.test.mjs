@@ -55,7 +55,7 @@ test("scope guard: with a transcript, an unrelated change escalates and shares t
   const dir = tempDir();
   try {
     const transcript = writeTranscript(dir, { prompt: "Fix the typo in the README heading." });
-    const env = hookEnv(mock);
+    const env = hookEnv(mock, { JEV_GATES_SCOPE: "on" });
     const drift = await runHook("rule-guard.mjs", editInput(cwd, join(cwd, "src/api.ts"), "renamed", { transcript_path: transcript }), env);
     const out = JSON.parse(drift.stdout);
     assert.equal(out.hookSpecificOutput.permissionDecision, "ask");
@@ -70,10 +70,12 @@ test("scope guard: with a transcript, an unrelated change escalates and shares t
     assert.match(log, /\tscope\tactive\task\t/);
     assert.match(log, /\tedit\tactive\tpass\t/);
 
-    // Scope can be switched off independently.
-    const off = await runHook("rule-guard.mjs", editInput(cwd, join(cwd, "src/api.ts"), "renamed", { transcript_path: transcript }), hookEnv(mock, { JEV_GATES_SCOPE: "off" }));
-    assert.equal(off.stdout, "");
-    assert.ok(!("scope" in mock.requests.at(-1).questions));
+    // Scope is opt-in: unset or off, the edit is judged against the rules only.
+    for (const extra of [{}, { JEV_GATES_SCOPE: "off" }]) {
+      const off = await runHook("rule-guard.mjs", editInput(cwd, join(cwd, "src/api.ts"), "renamed", { transcript_path: transcript }), hookEnv(mock, extra));
+      assert.equal(off.stdout, "");
+      assert.ok(!("scope" in mock.requests.at(-1).questions));
+    }
   } finally {
     await mock.close();
   }
