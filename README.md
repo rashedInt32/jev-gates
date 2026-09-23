@@ -8,7 +8,7 @@ A live run, nothing staged. Every probability and latency on screen is what Jev 
 
 | Gate | Fires on | Catches |
 | --- | --- | --- |
-| **Rule guard** | every edit, including shell writes | a change that breaks a rule in your CLAUDE.md |
+| **Rule guard** (opt-in) | every edit, including shell writes | a change that breaks a rule in your CLAUDE.md |
 | **Scope guard** (opt-in) | every edit, including shell writes | a change outside what you asked for |
 | **Intent guard** | every prompt | files edited when you only asked a question |
 | **Done gate** | every stop | an ask in your prompt left unaddressed |
@@ -56,6 +56,8 @@ To try it from a checkout without installing: `claude --plugin-dir /path/to/jev-
 ### Rule guard
 
 ![rule guard](demo/out/jev-gates-rules.gif)
+
+Off by default. Set `JEV_GATES_RULES=on` to enable it. It asks before an edit, and on real CLAUDE.md files, which mix rules with descriptions and reply-style guidance, it interrupted far more often than it caught a violation. It fits best with a short list of hard project rules, such as a directory that must never be edited.
 
 A PreToolUse hook on Edit, Write, MultiEdit, and on any Bash command that writes, moves, or removes a file: redirects, `tee`, `sed -i`, `cp`, `mv`, `rm`, `git checkout --`, and inline or heredoc scripts that call a file-writing API. Claude edits through the shell at least as often as through the Edit tool, so a guard that only watched Edit saw a minority of edits. Read-only commands exit before any request is made, and writes under `/tmp` are ignored. Rules come from `CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`, and `.claude/jev-gates.md`, walking from the working directory up to your home, plus `~/.claude/CLAUDE.md`. List items and imperative lines count; headings, links, tables, and code do not. Prohibitions sort first when the cap of 64 trims. One request carries the proposed change and one yes/no per rule.
 
@@ -150,8 +152,8 @@ Through the environment, for example in the `env` block of `~/.claude/settings.j
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `JEV_GATES` | `active` | `active`, `shadow` (log only), or `off` |
-| `JEV_GATES_RULES` / `_INTENT` / `_DONE` / `_CLAIMS` / `_PROOF` / `_COMMIT` | on | set any to `off` to disable that gate |
-| `JEV_GATES_SCOPE` | off | set to `on` to enable the scope guard |
+| `JEV_GATES_INTENT` / `_DONE` / `_CLAIMS` / `_PROOF` / `_COMMIT` | on | set any to `off` to disable that gate |
+| `JEV_GATES_RULES` / `_SCOPE` | off | set to `on` to enable the rule or scope guard |
 | `JEV_GATES_EDIT_THRESHOLD` | `0.8` | violation probability at or above which the rule guard escalates |
 | `JEV_GATES_EDIT_ACTION` | `ask` | `ask` prompts you; `deny` hands the reason back to Claude |
 | `JEV_GATES_SCOPE_THRESHOLD` | `0.2` | in-scope probability at or below which a change is flagged |

@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { hookEnv, runHook, startMock, tempDir, writeTranscript } from "./helpers.mjs";
+import { hookEnv as baseHookEnv, runHook, startMock, tempDir, writeTranscript } from "./helpers.mjs";
+
+// The rule guard is opt-in; these tests exercise it switched on.
+const hookEnv = (mock, extra = {}) => baseHookEnv(mock, { JEV_GATES_RULES: "on", ...extra });
 
 function project() {
   const cwd = tempDir("proj-");
@@ -76,6 +79,20 @@ test("scope guard: with a transcript, an unrelated change escalates and shares t
       assert.equal(off.stdout, "");
       assert.ok(!("scope" in mock.requests.at(-1).questions));
     }
+  } finally {
+    await mock.close();
+  }
+});
+
+test("rule guard is opt-in: unset or off, a forbidden edit sends no request and asks nothing", async () => {
+  const mock = await startMock(plan);
+  const cwd = project();
+  try {
+    for (const extra of [{}, { JEV_GATES_RULES: "off" }]) {
+      const out = await runHook("rule-guard.mjs", editInput(cwd, join(cwd, "src/generated/types.ts"), "x"), baseHookEnv(mock, extra));
+      assert.equal(out.stdout, "");
+    }
+    assert.equal(mock.requests.length, 0);
   } finally {
     await mock.close();
   }

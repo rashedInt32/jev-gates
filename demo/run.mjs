@@ -34,7 +34,7 @@ const pad = (s, n) => s + " ".repeat(Math.max(0, n - plain(s).length));
 function run(script, payload, env = {}) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [join(ROOT, "hooks", script)], {
-      env: { ...process.env, JEV_GATES: "active", JEV_GATES_DIR: DATA, JEV_GATES_RULE_FILES: RULES, ...env },
+      env: { ...process.env, JEV_GATES: "active", JEV_GATES_RULES: "on", JEV_GATES_SCOPE: "on", JEV_GATES_DIR: DATA, JEV_GATES_RULE_FILES: RULES, ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
