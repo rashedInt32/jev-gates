@@ -30,24 +30,28 @@ const CHECKS = {
     yes: "The wanted outcome is clear.",
     no: "The wanted outcome is vague or missing.",
     gap: "what outcome they want",
+    short: "the goal",
   },
   where: {
     question: "Is it clear which part of the code, app, or UI this is about?",
     yes: "The location is stated or obvious from context.",
     no: "A developer would have to guess where.",
     gap: "where in the code or app this applies",
+    short: "where",
   },
   done_when: {
     question: "Would a developer know how to tell the work is finished and correct?",
     yes: "A check, an expected result, or a self-evident finish line exists.",
     no: "There is no way to tell it is done.",
     gap: "how to tell the work is done",
+    short: "how to tell it's done",
   },
   bug_detail: {
     question: "If this reports a bug, does it say what should happen versus what happens, and how to trigger it?",
     yes: "It does, or this is not a bug report.",
     no: "It is a bug report missing expected versus actual behaviour or the trigger.",
     gap: "the expected versus actual behaviour, or how to trigger it",
+    short: "expected vs actual",
   },
 };
 
@@ -129,16 +133,20 @@ async function main() {
   writeLast(config, "intent", { decision, choice: a.choice, confidence: a.confidence, probabilities: a.probabilities, latency_ms: result.latency_ms, via: result.via, threshold: config.intentThreshold, checks: scores, follow_up: followUp, gaps });
 
   if (config.mode !== "active") return;
+  // `additionalContext` reaches Claude only; `systemMessage` is the one line the user sees.
   let context;
+  let notice;
   if (question) {
     context = `Intent guard: this message reads as a question, not a request for changes (p=${p.toFixed(2)}). Answer it. Do not edit, create, or delete files unless the user then asks for that. If you believe a change is wanted, say so and ask first.`;
+    notice = `Jev: read as a question, so Claude will answer without editing (p=${p.toFixed(2)})`;
   } else if (gaps.length > 0) {
     const missing = gaps.map((id) => CHECKS[id].gap);
     const list = missing.length === 1 ? missing[0] : `${missing.slice(0, -1).join(", ")} and ${missing.at(-1)}`;
     context = `Prompt check: this request may not say ${list}. Before you change anything, look for it in the repo, the running app, or this conversation. If you still can't tell, ask the user one short question about it.`;
+    notice = `Jev: prompt may be missing ${gaps.map((id) => CHECKS[id].short).join(" + ")}. Claude will look before it asks.`;
   }
   if (!context) return;
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context } }));
+  process.stdout.write(JSON.stringify({ systemMessage: notice, hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context } }));
 }
 
 main().catch(() => {

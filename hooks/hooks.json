@@ -6,7 +6,8 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}\"/hooks/intent-guard.mjs",
-            "timeout": 8
+            "timeout": 8,
+            "statusMessage": "Jev: checking your prompt"
           }
         ]
       }
@@ -38,7 +39,8 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}\"/hooks/bash-guard.mjs",
-            "timeout": 10
+            "timeout": 10,
+            "statusMessage": "Jev: checking the command"
           }
         ]
       }
@@ -49,7 +51,8 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}\"/hooks/stop-gate.mjs",
-            "timeout": 20
+            "timeout": 20,
+            "statusMessage": "Jev: checking the reply"
           }
         ]
       }

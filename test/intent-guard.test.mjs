@@ -204,3 +204,40 @@ test("a data directory from an older version is made private", async () => {
     await mock.close();
   }
 });
+
+test("you see a one-line notice whenever Jev adds a note, and nothing otherwise", async () => {
+  const question = await startMock(() => "answer_only");
+  try {
+    const out = JSON.parse((await runHook("intent-guard.mjs", promptInput("Why does add() return the wrong value?"), hookEnv(question))).stdout);
+    assert.equal(out.systemMessage, "Jev: read as a question, so Claude will answer without editing (p=0.90)");
+  } finally {
+    await question.close();
+  }
+
+  const gaps = await startMock(gapPlan({ where: 0.1, done_when: 0.2 }));
+  try {
+    const out = JSON.parse((await runHook("intent-guard.mjs", promptInput("fix the cart total"), hookEnv(gaps))).stdout);
+    assert.equal(out.systemMessage, "Jev: prompt may be missing where + how to tell it's done. Claude will look before it asks.");
+    assert.match(out.hookSpecificOutput.additionalContext, /^Prompt check:/);
+  } finally {
+    await gaps.close();
+  }
+
+  const complete = await startMock(gapPlan({}));
+  try {
+    assert.equal((await runHook("intent-guard.mjs", promptInput("fix the cart total"), hookEnv(complete))).stdout, "");
+  } finally {
+    await complete.close();
+  }
+});
+
+test("the hooks that call Jev on every turn show a status label while they run", async () => {
+  const { readFileSync: read } = await import("node:fs");
+  const hooks = JSON.parse(read(new URL("../hooks/hooks.json", import.meta.url), "utf8")).hooks;
+  const labels = Object.fromEntries(
+    Object.values(hooks).flatMap((groups) => groups.flatMap((g) => g.hooks)).map((h) => [h.command.match(/hooks\/([\w-]+)\.mjs/)[1], h.statusMessage]),
+  );
+  assert.equal(labels["intent-guard"], "Jev: checking your prompt");
+  assert.equal(labels["stop-gate"], "Jev: checking the reply");
+  assert.equal(labels["bash-guard"], "Jev: checking the command");
+});

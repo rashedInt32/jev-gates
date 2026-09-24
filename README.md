@@ -89,6 +89,8 @@ Rides in the intent guard's request, so it adds no round trip. When a prompt ask
 
 A gap is two checks at or below `JEV_GATES_CHECK_THRESHOLD`, or one at half of it. A single borderline score varied run to run on real prompts, so it is ignored. A gap sends Claude one note: find the missing piece in the repo, the running app, or the conversation first, and ask you one short question only if it still cannot tell. Nothing blocks, and your prompt is never rewritten.
 
+You see it happen. While the hook runs, the status line reads "Jev: checking your prompt". Whenever the intent guard or the prompt check adds a note, one line tells you, for example `Jev: prompt may be missing where + how to tell it's done. Claude will look before it asks.` or `Jev: read as a question, so Claude will answer without editing (p=0.93)`. Turns without a note show nothing.
+
 On 45 real prompts it flagged the same 3 of 17 change requests in two runs, all genuinely underspecified, and skipped 6 follow-ups.
 
 ### Bash guard
