@@ -106,3 +106,11 @@ Profiled 2026-09-24 with every hook in the author's setup, then fixed:
 - **Every prompt and every stop parsed the whole transcript.** Transcripts reach 42 MB; parsing one took about 106 ms, twice per turn. The prompt check, stop gate and scope guard now read from the end, 1 MB first and doubling until they reach the prompt they need. On the 42 MB transcript: prompt check about 584 ms to 500 to 544 ms, stop gate about 623 ms to about 540 ms.
 
 Not a jev-gates change, found by the same profile: `~/.claude/hooks/jev-guard.sh` still ran on every Bash command that was not plainly read-only, a cold Jev call of about 1,050 ms each time. It is retired by the settings swap described under Bash guard.
+
+## 0.7.2: drafted text is not a request
+
+Found in real use 2026-09-24. The user pasted a message drafted for a client and asked Claude to check one line of it. The done gate scored a question inside the draft, "Also, should all employees get access, or just one group?", as a request to Claude (0.91) that was not addressed (0.03), and blocked the stop. Each sentence was judged on its own, and the question never told Jev to consider who a sentence is addressed to.
+
+The request question now tells Jev to read each sentence in the context of the whole prompt, and that text the user pasted or is drafting for someone else, such as a message, email, ticket or quoted error, is not a request to the assistant even when it contains questions. Only what the user asks the assistant to do with that text counts.
+
+Live check, two runs each, against 0.7.1: the real prompt blocked on 0.7.1 both times and passes now; a draft plus "make it shorter" and a pasted error plus "fix it" pass on both; a skipped unit test (0.98 request) and a skipped question to the assistant, "should we memoize it?" (0.91 request), still block on both.

@@ -306,3 +306,24 @@ test("proof gate: shadow mode logs would-block and never exits 2", async () => {
     await mock.close();
   }
 });
+
+test("done gate: text drafted for someone else is judged in context, not as a request", async () => {
+  // Jev decides; this pins what it is told. The request question must carry the
+  // whole prompt and say that questions inside a pasted or drafted message are
+  // not requests to the assistant.
+  const draft = "Hi Jane, can you confirm the live domain? Should all employees get access, or just one group?";
+  const mock = await startMock((id, q) => (id.startsWith("req") ? (q.instructions.sentence.includes("Jane") || q.instructions.sentence.includes("employees") ? 0.1 : 0.95) : 0.95));
+  const dir = tempDir();
+  try {
+    const transcript = writeTranscript(dir, { prompt: `Here's my draft to Jane:\n\n${draft}\n\nCan you make it shorter?`, assistantText: "Shorter version: Hi Jane! Domain, and all employees or one group?" });
+    const run = await runHook("stop-gate.mjs", stopInput(transcript, { last_assistant_message: "Shorter version: Hi Jane! Domain, and all employees or one group?" }), hookEnv(mock, { JEV_GATES_CLAIMS: "off" }));
+    assert.equal(run.code, 0);
+    const req = mock.requests[0].questions.req0.instructions.task;
+    assert.match(req, /in the context of the whole user prompt/);
+    assert.match(req, /drafting for someone else/);
+    assert.match(req, /not a request to the assistant even when it contains questions/);
+    assert.match(mock.requests[0].state.user_prompt, /Here's my draft to Jane/);
+  } finally {
+    await mock.close();
+  }
+});
