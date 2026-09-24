@@ -29,7 +29,7 @@ test("the first call goes direct and starts a broker; later calls reuse one warm
     const first = await ask({ config, key: "k", state: { prompt: "a" }, questions });
     assert.equal(first.via, "direct");
     assert.equal(first.answers.q, 0.8);
-    assert.ok(await waitFor(() => existsSync(socketPath(config))), "broker socket appears");
+    assert.ok(await waitFor(() => existsSync(socketPath(config)) && mock.state.heads === 1), "broker socket appears and warms up");
     assert.equal(statSync(socketPath(config)).mode & 0o777, 0o600);
 
     const before = mock.state.connections;
@@ -38,7 +38,7 @@ test("the first call goes direct and starts a broker; later calls reuse one warm
     assert.equal(second.via, "broker");
     assert.equal(third.via, "broker");
     assert.equal(third.answers.q, 0.8);
-    assert.equal(mock.state.connections - before, 1, "two broker calls share one upstream connection");
+    assert.equal(mock.state.connections - before, 0, "both broker calls ride the connection the warm-up opened");
     assert.equal(mock.requests.length, 3);
   } finally {
     await mock.close();
@@ -176,4 +176,24 @@ test("brokers racing over a stale socket file leave exactly one reachable", asyn
   } finally {
     await mock.close();
   }
+});
+
+test("a new broker opens its connection before the first request, without a key", async () => {
+  const mock = await startMock(() => 0.8);
+  try {
+    const config = configFor(mock);
+    await ask({ config, key: "k", state: {}, questions });
+    assert.ok(await waitFor(() => existsSync(socketPath(config)) && mock.state.heads === 1), "broker warms up on start");
+    assert.equal(mock.state.headKeys, 0, "the warm-up carries no key");
+    const before = mock.state.connections;
+    const first = await ask({ config, key: "k", state: {}, questions });
+    assert.equal(first.via, "broker");
+    assert.equal(mock.state.connections - before, 0, "the first broker call reuses the warm connection");
+  } finally {
+    await mock.close();
+  }
+});
+
+test("an idle broker lives for an hour by default", () => {
+  assert.equal(readConfig({}).brokerIdleMs, 3_600_000);
 });

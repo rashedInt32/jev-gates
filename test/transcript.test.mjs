@@ -32,3 +32,27 @@ test("splitAsks turns bullets and sentences into candidates, deduped and capped"
   assert.deepEqual(splitAsks("Fix the bug in math.js, and add a usage example to README.md."), ["Fix the bug in math.js", "add a usage example to README.md."]);
   assert.deepEqual(splitAsks("Read this and that carefully."), ["Read this and that carefully."], "a bare 'and' inside a clause is not a joiner");
 });
+
+test("reading the end of a transcript gives the same answers as reading all of it", async () => {
+  const { lastUserPrompt, previousAssistantText, readTranscript, readTranscriptTail, toolActivitySince, previousAssistantTextFrom } = await import("../lib/transcript.mjs");
+  const { tempDir, writeTranscript } = await import("./helpers.mjs");
+  const bulky = "x".repeat(5000);
+  const path = writeTranscript(tempDir("tail-"), {
+    earlier: Array.from({ length: 40 }, (_, i) => `earlier ask ${i} ${bulky}`),
+    prompt: "fix the cart total",
+    tools: [{ name: "Bash", input: { command: "npm test" }, result: `ok ${bulky}` }, { name: "Edit", input: { file_path: "a.ts", old_string: "a", new_string: "b" } }],
+    assistantText: "Fixed the cart total.",
+  });
+  const full = readTranscript(path);
+  const fullPrompt = lastUserPrompt(full);
+  // A tiny first read forces the tail to grow several times before it finds the prompt.
+  for (const start of [64, 4096, 1 << 20]) {
+    const tail = readTranscriptTail(path, (e) => lastUserPrompt(e) !== null, start);
+    const p = lastUserPrompt(tail);
+    assert.equal(p.text, fullPrompt.text, `start ${start}`);
+    assert.deepEqual(toolActivitySince(tail, p.index), toolActivitySince(full, fullPrompt.index), `start ${start}`);
+  }
+  assert.equal(previousAssistantTextFrom(path, "a new prompt", 64), previousAssistantText(full, "a new prompt"));
+  assert.equal(previousAssistantTextFrom(path, "a new prompt"), "Fixed the cart total.");
+  assert.deepEqual(readTranscriptTail("/nonexistent/t.jsonl", () => true), []);
+});

@@ -1,6 +1,6 @@
 {
   "name": "jev-gates",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "Calibrated gates for Claude Code, judged by TypeSafe Jev: rules, scope, intent, prompt check, bash, done, claims, proof, and commit honesty.",
   "type": "module",

@@ -17,8 +17,16 @@ export const ROOT = fileURLToPath(new URL("..", import.meta.url));
  */
 export async function startMock(plan = () => undefined) {
   const requests = [];
-  const state = { status: 200, plan, connections: 0 };
+  const state = { status: 200, plan, connections: 0, heads: 0, headKeys: 0 };
   const server = createServer((req, res) => {
+    // The broker's connection warm-up. Not a judgment, so it is not recorded as one.
+    if (req.method === "HEAD") {
+      state.heads += 1;
+      if (req.headers.authorization) state.headKeys += 1;
+      // An explicit empty body, as real servers send; without it Node drops the connection.
+      res.writeHead(405, { "content-length": 0 });
+      return res.end();
+    }
     let raw = "";
     req.on("data", (d) => (raw += d));
     req.on("end", () => {

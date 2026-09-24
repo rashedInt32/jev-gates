@@ -21,7 +21,7 @@
 import { ask, cacheGet, cacheSet, clip, log, noul, readConfig, readKey, readMarker, readStdinJson, sha256, writeLast } from "../lib/jev.mjs";
 import { collectRules } from "../lib/rules.mjs";
 import { shellWrites } from "../lib/shell.mjs";
-import { lastUserPrompt, readTranscript } from "../lib/transcript.mjs";
+import { lastUserPrompt, readTranscriptTail } from "../lib/transcript.mjs";
 
 const TOOLS = new Set(["Edit", "Write", "MultiEdit", "Bash"]);
 
@@ -80,7 +80,7 @@ async function main() {
   }
 
   const rules = config.gates.rules ? collectRules(input.cwd ?? process.cwd(), { max: config.maxRules, files: config.ruleFiles }) : [];
-  const prompt = config.gates.scope && input.transcript_path ? lastUserPrompt(readTranscript(input.transcript_path)) : null;
+  const prompt = config.gates.scope && input.transcript_path ? lastUserPrompt(readTranscriptTail(input.transcript_path, (e) => lastUserPrompt(e) !== null)) : null;
   if (rules.length === 0 && !prompt) {
     log(config, ["edit", config.mode, "no-rules", filePath]);
     return;

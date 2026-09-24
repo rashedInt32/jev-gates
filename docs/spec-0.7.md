@@ -32,7 +32,7 @@ Applied at two boundaries: every string in the `state` sent to Jev, and every fi
 - Started lazily. When a hook finds no broker, it spawns one detached and makes its own call directly, so no call ever waits for a broker to boot.
 - Holds nothing secret. The key travels with each request over the 0600 socket, and the broker keeps no copy.
 - Refuses any base URL other than the one it started with. A hook with a different URL, or a stale broker from an older plugin version, gets a refusal and falls back to a direct call. A stale broker exits on refusal.
-- Exits after 10 minutes without a request (`JEV_GATES_BROKER_IDLE_MS`). One broker per data directory; a second one that loses the socket race exits.
+- Exits after an hour without a request (`JEV_GATES_BROKER_IDLE_MS`; 10 minutes in 0.7.0). One broker per data directory; a second one that loses the socket race exits.
 - `JEV_GATES_BROKER=off` restores direct calls.
 - Any broker failure means a direct call, never a lost judgment.
 
@@ -96,3 +96,13 @@ Stop, done, claims, proof and commit gates. The proof file jev-lens reads. The i
 - Unit tests for redaction (abuse cases first), the shell detector regressions, the broker (reuse, fallback, refusal, idle exit), the prompt gate (gaps note, silence on complete prompts and replies, images, check off), and the bash guard (skips, ask, redaction, cache, opt-in).
 - Live: the prompt gate and bash guard against the real API through the broker, with latency before and after.
 - `claude plugin validate .` passes.
+
+## 0.7.1: latency after breaks and in long sessions
+
+Profiled 2026-09-24 with every hook in the author's setup, then fixed:
+
+- **A fresh broker's first call was cold.** The broker opened its upstream connection only when the first request arrived, so after any break the next two Jev calls each paid the handshake. A new broker now opens the connection at start with a HEAD that carries no key: the API answers 405, nothing is billed, and the kept-alive socket serves the first real call. A request that arrives mid-handshake waits for it instead of opening a second cold connection. Second call after a break: about 1,000 ms before, 485 to 565 ms after, over six live runs.
+- **The broker quit after 10 idle minutes.** The API kept idle connections open for at least 13 minutes in every test (calls after 2, 5 and 10 idle minutes took 370 to 384 ms), so the broker's own timeout was the only limit. It is now an hour. A connection that dies anyway, after sleep or a network change, is retried once fresh.
+- **Every prompt and every stop parsed the whole transcript.** Transcripts reach 42 MB; parsing one took about 106 ms, twice per turn. The prompt check, stop gate and scope guard now read from the end, 1 MB first and doubling until they reach the prompt they need. On the 42 MB transcript: prompt check about 584 ms to 500 to 544 ms, stop gate about 623 ms to about 540 ms.
+
+Not a jev-gates change, found by the same profile: `~/.claude/hooks/jev-guard.sh` still ran on every Bash command that was not plainly read-only, a cold Jev call of about 1,050 ms each time. It is retired by the settings swap described under Bash guard.

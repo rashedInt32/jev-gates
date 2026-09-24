@@ -23,7 +23,7 @@
 
 import { ask, clip, log, noul, readConfig, readKey, readStdinJson, sha256, writeKeyed, writeLast } from "../lib/jev.mjs";
 import { editedFilesSince, enumerateObligations, repoRoot } from "../lib/obligations.mjs";
-import { assistantTextSince, lastUserPrompt, readTranscript, splitAsks, splitSentences, toolActivitySince } from "../lib/transcript.mjs";
+import { assistantTextSince, lastUserPrompt, readTranscriptTail, splitAsks, splitSentences, toolActivitySince } from "../lib/transcript.mjs";
 
 async function main() {
   const config = readConfig();
@@ -36,7 +36,7 @@ async function main() {
     return;
   }
 
-  const entries = readTranscript(input.transcript_path);
+  const entries = readTranscriptTail(input.transcript_path, (e) => lastUserPrompt(e) !== null);
   const prompt = lastUserPrompt(entries);
   if (!prompt) return;
 

@@ -2,7 +2,7 @@
   "name": "jev-gates",
   "displayName": "Jev Gates",
   "description": "Nine calibrated gates for Claude Code, judged by TypeSafe Jev: rules, scope, intent, prompt check, bash, done, claims, proof, and commit honesty. Each one escalates, never approves.",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "author": {
     "name": "rashed parvez"
   },

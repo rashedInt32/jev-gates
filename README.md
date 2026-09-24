@@ -155,7 +155,7 @@ The subject line always counts as a claim. Asked "is this a claim?", Jev scores 
 
 Nine gates do not mean nine requests. The intent guard and prompt check share one request per prompt. The rule and scope guards share one request per edit. The done, claims, and proof gates share one request per stop. The intent guard's marker path costs nothing.
 
-Every hook is a new process, and a new connection spent about 650 ms on TCP and TLS before Jev saw a byte. A small local broker now holds one warm connection: the first hook to find none starts it and calls Jev directly, later hooks send their requests through it over a socket only you can open. It holds no key, refuses requests for any other API, and exits after ten idle minutes. A hook process now takes about 450 ms instead of about 1,100 ms. `JEV_GATES_BROKER=off` turns it off.
+Every hook is a new process, and a new connection spent about 650 ms on TCP and TLS before Jev saw a byte. A small local broker now holds one warm connection: the first hook to find none starts it and calls Jev directly, later hooks send their requests through it over a socket only you can open. It opens its connection as soon as it starts, with a key-free request the API refuses, so even its first forwarded call is warm. It holds no key, refuses requests for any other API, and exits after an idle hour. A hook process now takes about 450 ms instead of about 1,100 ms. `JEV_GATES_BROKER=off` turns it off.
 
 | Moment | Requests |
 | --- | ---: |
@@ -193,7 +193,7 @@ Through the environment, for example in the `env` block of `~/.claude/settings.j
 | `JEV_GATES_MAX_CHARS` | `40000` | largest state sent; above it the gate skips |
 | `JEV_GATES_TIMEOUT_MS` | `8000` | per-request timeout; on timeout the gate has no opinion |
 | `JEV_GATES_BROKER` | on | `off` makes every call open its own connection |
-| `JEV_GATES_BROKER_IDLE_MS` | `600000` | how long an idle broker waits before it exits |
+| `JEV_GATES_BROKER_IDLE_MS` | `3600000` | how long an idle broker waits before it exits |
 | `JEV_GATES_MODEL` | `jev-latest` | model id |
 | `JEV_GATES_DIR` | `~/.claude/jev-gates` | log, cache, markers, last-decision files |
 
