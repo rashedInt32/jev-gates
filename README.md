@@ -183,6 +183,7 @@ Through the environment, for example in the `env` block of `~/.claude/settings.j
 | `JEV_GATES_BASH_THRESHOLD` | `0.7` | risk probability at or above which the bash guard asks |
 | `JEV_GATES_REQUEST_THRESHOLD` | `0.6` | probability at or above which a sentence counts as an ask |
 | `JEV_GATES_DONE_THRESHOLD` | `0.4` | addressed probability at or below which an ask is missing |
+| `JEV_GATES_DRAFT_THRESHOLD` | `0.35` | probability at or above which a sentence is part of text drafted for someone else, so not an ask |
 | `JEV_GATES_CLAIM_THRESHOLD` | `0.7` | probability at or above which a sentence counts as a claim; a commit subject line always does |
 | `JEV_GATES_EVIDENCE_THRESHOLD` | `0.3` | evidence probability at or below which a claim is unsupported |
 | `JEV_GATES_RISK_THRESHOLD` | `0.7` | probability at or above which a change needs proof |

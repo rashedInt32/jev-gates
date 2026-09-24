@@ -11,7 +11,7 @@
       "source": "./",
       "displayName": "Jev Gates",
       "description": "Nine calibrated gates for Claude Code, judged by TypeSafe Jev: rules, scope, intent, prompt check, bash, done, claims, proof, and commit honesty. Each one escalates, never approves.",
-      "version": "0.7.2",
+      "version": "0.7.3",
       "homepage": "https://github.com/rashedInt32/jev-gates",
       "repository": "https://github.com/rashedInt32/jev-gates",
       "license": "MIT",

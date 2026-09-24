@@ -9,6 +9,7 @@ const PROMPT = "Fix the failing test in auth.test.ts. Update the README to menti
 /** Every sentence but the thanks is a request; only the README ask went unaddressed. No claims flagged. */
 const donePlan = (id, q) => {
   if (id.startsWith("req")) return /thanks/i.test(q.instructions.sentence) ? 0.05 : 0.95;
+  if (id.startsWith("draft")) return 0.05; // the user's own words
   if (id.startsWith("done")) return /readme/i.test(q.instructions.ask) ? 0.08 : 0.97;
   if (id.startsWith("claim")) return 0.1;
   return 0.9;
@@ -57,6 +58,7 @@ test("claims gate: a statement with no supporting tool activity blocks the stop"
   // Two claims: the edit is evidenced, the test run is not.
   const plan = (id, q) => {
     if (id.startsWith("req")) return 0.9;
+    if (id.startsWith("draft")) return 0.05;
     if (id.startsWith("done")) return 0.9;
     if (id.startsWith("claim")) return /ran the test|changed/i.test(q.instructions.sentence) ? 0.95 : 0.1;
     if (id.startsWith("evidence")) return /changed/i.test(q.instructions.statement) ? 0.95 : 0.04;
@@ -88,7 +90,7 @@ test("claims gate: a statement with no supporting tool activity blocks the stop"
 });
 
 test("both gates can fire together, and each can be switched off", async () => {
-  const plan = (id) => (id.startsWith("evidence") || id.startsWith("done") ? 0.05 : 0.95);
+  const plan = (id) => (id.startsWith("evidence") || id.startsWith("done") || id.startsWith("draft") ? 0.05 : 0.95);
   const mock = await startMock(plan);
   const dir = tempDir();
   try {
@@ -124,7 +126,7 @@ test("everything addressed and supported lets Claude stop", async () => {
 });
 
 test("shadow mode records would-block for both gates and never exits 2", async () => {
-  const mock = await startMock((id) => (id.startsWith("done") || id.startsWith("evidence") ? 0.05 : 0.95));
+  const mock = await startMock((id) => (id.startsWith("done") || id.startsWith("evidence") || id.startsWith("draft") ? 0.05 : 0.95));
   const dir = tempDir();
   try {
     const transcript = writeTranscript(dir, { prompt: PROMPT, tools: [{ name: "Read", input: { file_path: "a.js" }, result: "contents" }] });
@@ -325,5 +327,35 @@ test("done gate: text drafted for someone else is judged in context, not as a re
     assert.match(mock.requests[0].state.user_prompt, /Here's my draft to Jane/);
   } finally {
     await mock.close();
+  }
+});
+
+test("done gate: a question inside drafted text is not a request, even when it reads as one", async () => {
+  // Jev scores the draft's question as a request (0.62) and as drafted text (0.62);
+  // the user's own ask is neither drafted nor done. Only the user's ask may block.
+  const DRAFT_Q = "Should all employees get access, or just one group?";
+  const plan = (id, q) => {
+    const sentence = q.instructions.sentence ?? q.instructions.ask ?? "";
+    if (id.startsWith("req")) return sentence.includes("employees") ? 0.62 : sentence.includes("check the domain") ? 0.95 : 0.1;
+    if (id.startsWith("draft")) return sentence.includes("employees") || sentence.includes("Hi Jane") ? 0.62 : 0.08;
+    if (id.startsWith("done")) return 0.03;
+    return 0.1;
+  };
+  const prompt = `Draft for Jane:\n\nHi Jane, the domain is set. ${DRAFT_Q}\n\nCan you check the domain is right?`;
+  for (const [threshold, expectBlockedOn] of [[undefined, "check the domain"], ["0.7", "employees"]]) {
+    const mock = await startMock(plan);
+    const dir = tempDir();
+    try {
+      const transcript = writeTranscript(dir, { prompt, assistantText: "Looks fine." });
+      const env = hookEnv(mock, { JEV_GATES_CLAIMS: "off", ...(threshold ? { JEV_GATES_DRAFT_THRESHOLD: threshold } : {}) });
+      const run = await runHook("stop-gate.mjs", stopInput(transcript, { last_assistant_message: "Looks fine." }), env);
+      assert.equal(run.code, 2, `threshold ${threshold}`);
+      assert.match(run.stderr, new RegExp(expectBlockedOn), `threshold ${threshold}`);
+      if (!threshold) assert.doesNotMatch(run.stderr, /employees/, "the drafted question is not named");
+      const draftQ = mock.requests[0].questions.draft0.instructions.task;
+      assert.match(draftQ, /pasted or is drafting for someone else/);
+    } finally {
+      await mock.close();
+    }
   }
 });

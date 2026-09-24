@@ -114,3 +114,11 @@ Found in real use 2026-09-24. The user pasted a message drafted for a client and
 The request question now tells Jev to read each sentence in the context of the whole prompt, and that text the user pasted or is drafting for someone else, such as a message, email, ticket or quoted error, is not a request to the assistant even when it contains questions. Only what the user asks the assistant to do with that text counts.
 
 Live check, two runs each, against 0.7.1: the real prompt blocked on 0.7.1 both times and passes now; a draft plus "make it shorter" and a pasted error plus "fix it" pass on both; a skipped unit test (0.98 request) and a skipped question to the assistant, "should we memoize it?" (0.91 request), still block on both.
+
+## 0.7.3: a separate question for drafted text
+
+0.7.2 was not enough. Sampled more times, the real prompt still blocked in 2 of 8 runs with the new wording: the drafted question scored 0.60 and 0.61 as a request, right at the 0.6 bar. Folded into the request question, the drafted-text clause was weighed inconsistently.
+
+Each candidate sentence now gets its own question, `draft`: is it part of text pasted or drafted for someone else, rather than the user's own words to the assistant? A sentence counts as an ask only when its request score is at or above `JEV_GATES_REQUEST_THRESHOLD` and its draft score is below `JEV_GATES_DRAFT_THRESHOLD` (0.35). Over 20 live runs, the user's own asks scored 0.07 to 0.09 on `draft`; the drafted question scored 0.62 whenever it also read as a request.
+
+Live check with the separate question: the real prompt passed 8 of 8 runs at the 0.5 cutoff and 8 of 8 at 0.35; across 4 runs each, a draft plus "make it shorter" and a pasted error plus "fix it" pass, and a skipped unit test and a skipped question to the assistant still block every time.
