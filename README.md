@@ -1,6 +1,6 @@
 # jev-gates
 
-Seven calibrated gates for Claude Code, judged by [TypeSafe Jev](https://docs.typesafe.ai). Each one escalates. None of them ever approves.
+Nine calibrated gates for Claude Code, judged by [TypeSafe Jev](https://docs.typesafe.ai). Each one escalates. None of them ever approves.
 
 ![jev-gates: every gate replayed through the real hooks against the live API](demo/out/jev-gates.gif)
 
@@ -11,12 +11,14 @@ A live run, nothing staged. Every probability and latency on screen is what Jev 
 | **Rule guard** (opt-in) | every edit, including shell writes | a change that breaks a rule in your CLAUDE.md |
 | **Scope guard** (opt-in) | every edit, including shell writes | a change outside what you asked for |
 | **Intent guard** | every prompt | files edited when you only asked a question |
+| **Prompt check** | every change request | a request missing its outcome, location, finish line, or bug repro |
+| **Bash guard** (opt-in) | shell commands that are not plainly read-only | a destructive or irreversible command before it runs |
 | **Done gate** | every stop | an ask in your prompt left unaddressed |
 | **Claims gate** | every stop | "tests pass" when no test ever ran |
 | **Proof gate** | every stop | a risky change that nothing ran, tested, or checked after the edit |
 | **Commit guard** | `git commit` | a message claiming work the diff does not show |
 
-Each gate costs about a second and a fraction of a cent. A wrong answer costs one permission prompt or one retry. It never costs a wrong write, a silent skip, or a false claim you believed.
+Each gate costs about half a second once the connection is warm, and a fraction of a cent. A wrong answer costs one permission prompt or one retry. It never costs a wrong write, a silent skip, or a false claim you believed.
 
 ## The problem
 
@@ -81,6 +83,18 @@ Rides along in the same request as the rule guard, so it is free. It compares th
 
 A UserPromptSubmit hook. One pick-one question per prompt: do you want an answer, or changes? A request phrased as a question ("can you fix X?") is classified by meaning, not punctuation. When your message reads as a question, Claude is told to answer it, and a session marker makes the rule guard escalate any edit attempted in that same turn without spending another request.
 
+### Prompt check
+
+Rides in the intent guard's request, so it adds no round trip. When a prompt asks for changes, four yes/no checks ask whether it says what outcome you want, where in the code or app, how to tell it is done, and, for a bug, expected versus actual and how to trigger it. They are judged with Claude's previous turn as context, and a fifth check asks whether the prompt builds on that turn. A reply such as "yes go ahead" or a follow-up such as "same for checkout" takes its what and where from the turn before, so it is not checked.
+
+A gap is two checks at or below `JEV_GATES_CHECK_THRESHOLD`, or one at half of it. A single borderline score varied run to run on real prompts, so it is ignored. A gap sends Claude one note: find the missing piece in the repo, the running app, or the conversation first, and ask you one short question only if it still cannot tell. Nothing blocks, and your prompt is never rewritten.
+
+On 45 real prompts it flagged the same 3 of 17 change requests in two runs, all genuinely underspecified, and skipped 6 follow-ups.
+
+### Bash guard
+
+Off by default. Set `JEV_GATES_BASH=on` to enable it. One yes/no per shell command: does running it risk destroying work, exposing secrets, or an effect that cannot be undone? At or above `JEV_GATES_BASH_THRESHOLD` it asks before the command runs. Plainly read-only commands skip the request: every segment runs a read-only program in a read-only way, nothing is redirected into a file, nothing is substituted. `cat notes && rm -rf build`, `cat notes & rm -rf build`, `git branch -D x`, `sort -o file`, and awk's `system()` are not read-only. Credential paths and force pushes are left to the hooks that own them. The answer is cached per command.
+
 ### Done gate
 
 ![done gate](demo/out/jev-gates-done.gif)
@@ -133,14 +147,18 @@ The subject line always counts as a claim. Asked "is this a claim?", Jev scores 
 3. **Every answer is validated** against the question sent. A choice that was not offered, or a distribution over the wrong options, is discarded.
 4. **Untrusted content is labelled.** Your prompt, the change, the reply, and the diff all travel as data with an explicit note that they are never instructions.
 5. **Every decision is logged** with its probability and latency, so you can calibrate on your own sessions.
+6. **Secrets stay home.** API keys, tokens, passwords, bearer headers, private keys, and URL passwords are replaced with `[redacted]` in everything sent to Jev and everything logged. The data directory is private to your user.
 
 ## Cost
 
-Seven gates do not mean seven requests. The rule and scope guards share one request per edit. The done, claims, and proof gates share one request per stop. The intent guard is one request per prompt, and its marker path costs nothing.
+Nine gates do not mean nine requests. The intent guard and prompt check share one request per prompt. The rule and scope guards share one request per edit. The done, claims, and proof gates share one request per stop. The intent guard's marker path costs nothing.
+
+Every hook is a new process, and a new connection spent about 650 ms on TCP and TLS before Jev saw a byte. A small local broker now holds one warm connection: the first hook to find none starts it and calls Jev directly, later hooks send their requests through it over a socket only you can open. It holds no key, refuses requests for any other API, and exits after ten idle minutes. A hook process now takes about 450 ms instead of about 1,100 ms. `JEV_GATES_BROKER=off` turns it off.
 
 | Moment | Requests |
 | --- | ---: |
 | You send a prompt | 1 |
+| Claude runs a shell command that is not plainly read-only, with the bash guard on | 1 (cached when the command repeats) |
 | Claude edits a file, with the Edit tool or a shell write | 1 (cached when the change repeats) |
 | Claude runs `git commit` | 1 |
 | Claude tries to stop | 1 |
@@ -152,12 +170,15 @@ Through the environment, for example in the `env` block of `~/.claude/settings.j
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `JEV_GATES` | `active` | `active`, `shadow` (log only), or `off` |
-| `JEV_GATES_INTENT` / `_DONE` / `_CLAIMS` / `_PROOF` / `_COMMIT` | on | set any to `off` to disable that gate |
-| `JEV_GATES_RULES` / `_SCOPE` | off | set to `on` to enable the rule or scope guard |
+| `JEV_GATES_INTENT` / `_CHECK` / `_DONE` / `_CLAIMS` / `_PROOF` / `_COMMIT` | on | set any to `off` to disable that gate |
+| `JEV_GATES_RULES` / `_SCOPE` / `_BASH` | off | set to `on` to enable the rule, scope, or bash guard |
 | `JEV_GATES_EDIT_THRESHOLD` | `0.8` | violation probability at or above which the rule guard escalates |
 | `JEV_GATES_EDIT_ACTION` | `ask` | `ask` prompts you; `deny` hands the reason back to Claude |
 | `JEV_GATES_SCOPE_THRESHOLD` | `0.2` | in-scope probability at or below which a change is flagged |
 | `JEV_GATES_INTENT_THRESHOLD` | `0.8` | answer-only probability needed to treat a prompt as a question |
+| `JEV_GATES_CHECK_THRESHOLD` | `0.3` | prompt check score at or below which a check is weak; two weak, or one at half this, is a gap |
+| `JEV_GATES_FOLLOWUP_THRESHOLD` | `0.4` | probability at or above which a prompt builds on the previous turn and is not checked |
+| `JEV_GATES_BASH_THRESHOLD` | `0.7` | risk probability at or above which the bash guard asks |
 | `JEV_GATES_REQUEST_THRESHOLD` | `0.6` | probability at or above which a sentence counts as an ask |
 | `JEV_GATES_DONE_THRESHOLD` | `0.4` | addressed probability at or below which an ask is missing |
 | `JEV_GATES_CLAIM_THRESHOLD` | `0.7` | probability at or above which a sentence counts as a claim; a commit subject line always does |
@@ -169,6 +190,8 @@ Through the environment, for example in the `env` block of `~/.claude/settings.j
 | `JEV_GATES_MAX_RULES` / `_MAX_ASKS` / `_MAX_CLAIMS` / `_MAX_CHANGES` | 64 / 24 / 16 / 16 | per-request caps |
 | `JEV_GATES_MAX_CHARS` | `40000` | largest state sent; above it the gate skips |
 | `JEV_GATES_TIMEOUT_MS` | `8000` | per-request timeout; on timeout the gate has no opinion |
+| `JEV_GATES_BROKER` | on | `off` makes every call open its own connection |
+| `JEV_GATES_BROKER_IDLE_MS` | `600000` | how long an idle broker waits before it exits |
 | `JEV_GATES_MODEL` | `jev-latest` | model id |
 | `JEV_GATES_DIR` | `~/.claude/jev-gates` | log, cache, markers, last-decision files |
 
@@ -178,7 +201,7 @@ Start in `shadow` to watch before letting it intervene:
 tail -f ~/.claude/jev-gates/decisions.log
 ```
 
-Lines are tab separated: time, gate, mode, decision, then details. `last-edit.json`, `last-scope.json`, `last-intent.json`, `last-done.json`, `last-claims.json`, `last-proof.json`, and `last-commit.json` hold the full scored breakdown of the most recent decision of each kind.
+Lines are tab separated: time, gate, mode, decision, then details. Prompt checks log as `check` with every score, bash decisions as `bash`. `last-edit.json`, `last-scope.json`, `last-intent.json` (which now carries the prompt check scores), `last-done.json`, `last-claims.json`, `last-proof.json`, and `last-commit.json` hold the full scored breakdown of the most recent decision of each kind.
 
 ## Calibration
 
@@ -214,6 +237,8 @@ Two findings worth your attention, both from real sessions rather than fixtures.
 - Your global `~/.claude/CLAUDE.md` is included. Response-style rules score low on code edits but not zero. Point `JEV_GATES_RULE_FILES` at the files you mean if that is noise.
 - The Stop hook reads the prompt from the transcript file, which can lag. If the prompt is not there yet, the gates have no opinion.
 - The commit guard reads the staged diff only. A message describing work from an earlier commit will be flagged.
+- The prompt check cannot see attached images. It is told they exist and assumes they show what the prompt points at.
+- The bash guard's read-only list is a fast path, not a verdict. A command it does not recognise goes to Jev, which costs latency, never safety.
 - A probability is not a proof. Every gate is built so that being wrong is cheap, not impossible.
 - Jev cannot count or compute. "Make sure there are exactly three tests" is judged on what the reply says, not by counting. See TypeSafe's note on [numeric and date limitations](https://docs.typesafe.ai/model-jaggedness/jev-1.13).
 

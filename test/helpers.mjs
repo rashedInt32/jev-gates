@@ -17,7 +17,7 @@ export const ROOT = fileURLToPath(new URL("..", import.meta.url));
  */
 export async function startMock(plan = () => undefined) {
   const requests = [];
-  const state = { status: 200, plan };
+  const state = { status: 200, plan, connections: 0 };
   const server = createServer((req, res) => {
     let raw = "";
     req.on("data", (d) => (raw += d));
@@ -46,12 +46,17 @@ export async function startMock(plan = () => undefined) {
       res.end(JSON.stringify({ model: "mock-jev", answers, usage: { input_tokens: 10, output_tokens: 2 } }));
     });
   });
+  server.on("connection", () => (state.connections += 1));
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   return {
     url: `http://127.0.0.1:${server.address().port}`,
     requests,
     state,
-    close: () => new Promise((resolve) => server.close(resolve)),
+    close: () =>
+      new Promise((resolve) => {
+        server.closeAllConnections();
+        server.close(resolve);
+      }),
   };
 }
 
@@ -109,5 +114,6 @@ export const KEY_VAR = ["TYPESAFE", "API", "KEY"].join("_");
 
 /** Environment for a hook run against a mock, with isolated data and home. */
 export function hookEnv(mock, extra = {}) {
-  return { [KEY_VAR]: "k", JEV_GATES_BASE_URL: mock.url, JEV_GATES_DIR: tempDir("data-"), HOME: tempDir("home-"), ...extra };
+  // Direct calls by default, so request counts are exact; test/broker.test.mjs turns the broker on.
+  return { [KEY_VAR]: "k", JEV_GATES_BASE_URL: mock.url, JEV_GATES_DIR: tempDir("data-"), HOME: tempDir("home-"), JEV_GATES_BROKER: "off", ...extra };
 }
