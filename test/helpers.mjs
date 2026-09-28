@@ -102,12 +102,29 @@ export function writeTranscript(dir, { prompt, tools = [], assistantText = "", e
   const lines = [];
   let n = 0;
   const push = (o) => lines.push(JSON.stringify({ uuid: `u${n++}`, sessionId: "s", ...o }));
-  for (const text of earlier) {
+  // An earlier turn is a prompt string, or { prompt, reply, ran, feedback }:
+  // `ran` gives it a tool call, `feedback` a Stop hook block and a second reply.
+  for (const turn of earlier) {
+    const { prompt: text, reply = "ok", ran = false, feedback } = typeof turn === "string" ? { prompt: turn } : turn;
     push({ type: "user", message: { role: "user", content: text } });
-    push({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "ok" }] } });
+    if (ran) {
+      const id = `t${n}`;
+      push({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id, name: "Bash", input: { command: ran } }] } });
+      push({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: "done" }] } });
+    }
+    push({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: reply }] } });
+    if (feedback) {
+      push({ type: "user", isMeta: true, message: { role: "user", content: `Stop hook feedback:\n${feedback.block}` } });
+      push({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: feedback.reply }] } });
+    }
   }
   push({ type: "user", message: { role: "user", content: prompt } });
   for (const t of tools) {
+    // { raw } is written as it is: a subagent report, a notification, an attachment.
+    if (t.raw) {
+      push(t.raw);
+      continue;
+    }
     const id = `t${n}`;
     push({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id, name: t.name, input: t.input }] } });
     push({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: t.result ?? "done" }] } });

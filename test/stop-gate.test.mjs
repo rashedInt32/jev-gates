@@ -362,3 +362,85 @@ test("done gate: a question inside drafted text is not a request, even when it r
     }
   }
 });
+
+test("claims gate: Jev sees the earlier replies, and the questions carry the 0.8 rules", async () => {
+  // A reply that restates a result from the turn before. The claim question now
+  // covers plain state claims, and the evidence question reads earlier replies.
+  const mock = await startMock((id) => (id.startsWith("claim") ? 0.9 : id.startsWith("evidence") ? 0.9 : 0.05));
+  const dir = tempDir();
+  try {
+    const transcript = writeTranscript(dir, {
+      earlier: [{ prompt: "Run the tests.", ran: "npm test", reply: "I ran npm test. All 18 tests pass." }],
+      prompt: "Commit it.",
+      tools: [{ name: "Bash", input: { command: "git commit -qam fix && git log --oneline -1" }, result: "a1b2c3d fix" }],
+    });
+    const env = { ...hookEnv(mock), JEV_GATES_DONE: "off" };
+    const run = await runHook("stop-gate.mjs", stopInput(transcript, { last_assistant_message: "Committed as a1b2c3d. All 18 tests pass." }), env);
+    assert.equal(run.code, 0);
+
+    const body = mock.requests[0];
+    assert.deepEqual(body.state.assistant_earlier_replies, ["I ran npm test. All 18 tests pass."]);
+    const claimTask = body.questions.claim0.instructions.task;
+    assert.match(claimTask, /The working tree was clean\./, "plain state claims count");
+    assert.match(claimTask, /steps or checks for the user/, "test steps for the user do not");
+    const evidenceTask = body.questions.evidence0.instructions.task;
+    assert.match(evidenceTask, /assistant_earlier_replies/);
+    assert.match(evidenceTask, /outputs outrank earlier replies/);
+    assert.match(evidenceTask, /needs its matching item/);
+  } finally {
+    await mock.close();
+  }
+});
+
+test("claims gate: no earlier turns means no earlier_replies key", async () => {
+  const mock = await startMock((id) => (id.startsWith("evidence") ? 0.95 : 0.9));
+  const dir = tempDir();
+  try {
+    const transcript = writeTranscript(dir, { prompt: "Run the tests.", tools: [{ name: "Bash", input: { command: "npm test" }, result: "12 passing" }] });
+    const run = await runHook("stop-gate.mjs", stopInput(transcript), { ...hookEnv(mock), JEV_GATES_DONE: "off" });
+    assert.equal(run.code, 0);
+    assert.equal("assistant_earlier_replies" in mock.requests[0].state, false);
+  } finally {
+    await mock.close();
+  }
+});
+
+test("claims gate: a turn with only harness notices stands down like a turn with nothing", async () => {
+  const mock = await startMock(() => 0.9);
+  const dir = tempDir();
+  try {
+    const transcript = writeTranscript(dir, {
+      prompt: "What does this plugin do?",
+      tools: [{ raw: { type: "attachment", attachment: { type: "mcp_instructions_delta", addedNames: ["figma"], removedNames: [] } } }],
+    });
+    const env = { ...hookEnv(mock), JEV_GATES_DONE: "off", JEV_GATES_PROOF: "off" };
+    const run = await runHook("stop-gate.mjs", stopInput(transcript, { last_assistant_message: "It checks claims. All tests pass." }), env);
+    assert.equal(run.code, 0);
+    assert.equal(mock.requests.length, 0, "no claims questions sent");
+    assert.match(readFileSync(join(env.JEV_GATES_DIR, "decisions.log"), "utf8"), /\tclaims\tactive\tno-evidence\t/);
+  } finally {
+    await mock.close();
+  }
+});
+
+test("claims gate: an oversized state drops the earlier replies before skipping every gate", async () => {
+  const mock = await startMock((id) => (id.startsWith("evidence") ? 0.95 : 0.9));
+  const dir = tempDir();
+  try {
+    const transcript = writeTranscript(dir, {
+      earlier: [{ prompt: "Summarise.", ran: "ls", reply: "x".repeat(1900) }],
+      prompt: "Run the tests.",
+      tools: [{ name: "Bash", input: { command: "npm test" }, result: "12 passing" }],
+    });
+    const reply = "I ran npm test and 12 tests pass.";
+    // Room for everything but the earlier reply.
+    const env = { ...hookEnv(mock), JEV_GATES_DONE: "off", JEV_GATES_MAX_CHARS: "1200" };
+    const run = await runHook("stop-gate.mjs", stopInput(transcript, { last_assistant_message: reply }), env);
+    assert.equal(run.code, 0);
+    assert.equal(mock.requests.length, 1, "the gate still ran");
+    assert.equal("assistant_earlier_replies" in mock.requests[0].state, false);
+    assert.match(readFileSync(join(env.JEV_GATES_DIR, "decisions.log"), "utf8"), /\tstop\tactive\tdrop-earlier\t/);
+  } finally {
+    await mock.close();
+  }
+});

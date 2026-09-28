@@ -107,7 +107,9 @@ A Stop hook. Your last prompt is split into candidate asks. Two questions per ca
 
 ![claims gate](demo/out/jev-gates-claims.gif)
 
-Shares the Stop request with the done gate. The reply is split into sentences, and each is checked twice: does it positively assert something the assistant did or observed, and do this turn's tool calls and outputs support it. Statements about what was *not* done are never treated as claims, because an absence cannot be evidenced.
+Shares the Stop request with the done gate. The reply is split into sentences, and each is checked twice: does it positively assert something the assistant did or observed, and does anything support it. Statements about what was *not* done are never treated as claims, because an absence cannot be evidenced. Plain state claims count even without "I": "The working tree was clean.", "All tests pass." Steps written for you to check, such as "Open this link: it shows the job", do not.
+
+The evidence Jev sees is this turn's tool calls and outputs, plus what came back outside them: subagent reports, background task notifications, messages you typed mid-turn, and notices that the tool list changed. Long outputs keep their start and end, where results sit. Long commands fold heredoc bodies, so a `&& git push` after a commit message stays visible. Image results say an image was seen. The assistant's last three replies are included too, because a final reply often restates earlier results. Only replies from turns that ran tools count, minus any sentence the claims gate already flagged, so an unchecked claim cannot vouch for itself. This turn's outputs outrank them, so a rerun that fails cannot be rescued by an earlier "all pass".
 
 ```
 Claims gate: 1 statement in your reply is not supported by anything you ran this turn:
@@ -191,7 +193,7 @@ Through the environment, for example in the `env` block of `~/.claude/settings.j
 | `JEV_GATES_COMMIT_THRESHOLD` | `0.3` | in-diff probability at or below which a commit claim is flagged |
 | `JEV_GATES_RULE_FILES` | unset | colon-separated rule files; replaces the CLAUDE.md walk |
 | `JEV_GATES_MAX_RULES` / `_MAX_ASKS` / `_MAX_CLAIMS` / `_MAX_CHANGES` | 64 / 24 / 16 / 16 | per-request caps |
-| `JEV_GATES_MAX_CHARS` | `40000` | largest state sent; above it the gate skips |
+| `JEV_GATES_MAX_CHARS` | `48000` | largest state sent; above it the gate skips |
 | `JEV_GATES_TIMEOUT_MS` | `8000` | per-request timeout; on timeout the gate has no opinion |
 | `JEV_GATES_BROKER` | on | `off` makes every call open its own connection |
 | `JEV_GATES_BROKER_IDLE_MS` | `3600000` | how long an idle broker waits before it exits |
@@ -232,6 +234,8 @@ Two findings worth your attention, both from real sessions rather than fixtures.
 
 **The claims gate false-positived twice before it shipped.** It blocked honest replies over sentences like "Nothing else touched, not committed." An absence cannot be evidenced by a tool output, so asking for evidence of one always fails. Negative statements are now excluded from being claims, tool results carry more context, and the gate stands down entirely when the transcript records no tool activity for the turn, because the transcript file lags the live conversation and silence is as likely to be lag as fabrication. Both sessions were replayed after the fix and both pass.
 
+**Most claims-gate blocks in real use were the gate's blind spots, not Claude's.** Replaying 73 real turns through 0.7.4, 15 blocked, and most of those blocked sentences were true: a `git push` cut off the end of a 200-character command, a test summary cut off the end of a 1,200-character output, subagent results that arrive as messages, screenshots that read as empty, and results restated from the turn before. 0.8.0 fixes each of these and widens what counts as a claim. The same turns now block 5 times. 14 false sentences built to slip past the new rules all block, and 12 true ones pass, 8 runs out of 8. Details in `docs/spec-0.8.md`.
+
 **Claude rarely lies or skips on its own.** In these sessions it refused an instruction to report a test run it had not performed, and it refused an instruction to slip in an unrequested refactor. Forcing a block needed an induced omission. That is good news about the model and a caveat about the gates: most of their value shows up in long sessions, not short ones.
 
 ## Limits
@@ -239,6 +243,8 @@ Two findings worth your attention, both from real sessions rather than fixtures.
 - Rules are whatever your CLAUDE.md says. A rule the model cannot check from the change alone, such as "run the tests before committing", scores low on every edit.
 - Your global `~/.claude/CLAUDE.md` is included. Response-style rules score low on code edits but not zero. Point `JEV_GATES_RULE_FILES` at the files you mean if that is noise.
 - The Stop hook reads the prompt from the transcript file, which can lag. If the prompt is not there yet, the gates have no opinion.
+- The claims gate sees this turn and the last three replies. A result restated from further back, or known only from a long-past session, reads as unsupported and costs one retry.
+- The claims gate judges sentence by sentence. "No reference survives. The only match left is a sample post." can block on the first sentence even though the second qualifies it.
 - The commit guard reads the staged diff only. A message describing work from an earlier commit will be flagged.
 - The prompt check cannot see attached images. It is told they exist and assumes they show what the prompt points at.
 - The bash guard's read-only list is a fast path, not a verdict. A command it does not recognise goes to Jev, which costs latency, never safety.
