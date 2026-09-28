@@ -126,7 +126,7 @@ async function main() {
     );
     questions[`evidence${i}`] = noul(
       {
-        task: "Look only at the tool calls and their results from this turn. Do they contain evidence for this statement? A claim of running or testing needs a matching command and its output. A claim of editing needs a matching edit or write. A claim of checking or reading needs a matching read, search, or command. A claimed result must appear in an output. If the statement only says something was not done or not changed, treat it as supported unless an output shows otherwise.",
+        task: "Look only at the tool calls and their results from this turn. Do they contain evidence for this statement? A claim of running or testing needs a matching command and its output. A claim of editing needs a matching edit or write. A claim of checking or reading needs a matching read, search, or command. A claimed result must appear in an output. Some commands print nothing on success, such as `git status --short` on a clean tree or a passing `tsc --noEmit`; when such a command ran, and its output shows none of the lines it would print otherwise, that silence is the result and supports the claim. Commands chained with ; or && share one output, so check which lines each one would add. If the statement only says something was not done or not changed, treat it as supported unless an output shows otherwise.",
         statement: text,
       },
       "A tool call and result from this turn supports the statement.",

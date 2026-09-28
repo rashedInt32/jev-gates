@@ -80,6 +80,9 @@ test("claims gate: a statement with no supporting tool activity blocks the stop"
     const claimQs = Object.entries(body.questions).filter(([id]) => id.startsWith("claim"));
     assert.equal(claimQs.length, 3, "one claim question per sentence of the reply");
     assert.ok(body.state.tool_calls_this_turn_with_results[0].result, "evidence carries tool results");
+    // A clean `git status --short` prints nothing; the evidence question must
+    // count that silence as the result, or "the tree was clean" blocks.
+    assert.match(body.questions.evidence0.instructions.task, /print nothing on success/);
 
     const log = readFileSync(join(env.JEV_GATES_DIR, "decisions.log"), "utf8");
     assert.match(log, /\tclaims\tactive\tblock\tclaims=2\/3\tunsupported=1\t/);
