@@ -1,50 +1,5 @@
 {
   "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}\"/hooks/intent-guard.mjs",
-            "timeout": 8,
-            "statusMessage": "Jev: checking your prompt"
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}\"/hooks/rule-guard.mjs",
-            "timeout": 15
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}\"/hooks/rule-guard.mjs",
-            "timeout": 15
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}\"/hooks/commit-guard.mjs",
-            "timeout": 15
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}\"/hooks/bash-guard.mjs",
-            "timeout": 10,
-            "statusMessage": "Jev: checking the command"
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "hooks": [

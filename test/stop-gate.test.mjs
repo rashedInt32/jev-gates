@@ -3,6 +3,16 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { hookEnv, runHook, startMock, tempDir, writeTranscript } from "./helpers.mjs";
+import { readConfig } from "../lib/jev.mjs";
+
+test("only the claims gate is on by default, and only the Stop hook is wired", () => {
+  const { gates } = readConfig({});
+  assert.deepEqual(Object.keys(gates).filter((g) => gates[g]), ["claims"]);
+  assert.equal(readConfig({ JEV_GATES_DONE: "on" }).gates.done, true);
+  assert.equal(readConfig({ JEV_GATES_CLAIMS: "off" }).gates.claims, false);
+  const hooks = JSON.parse(readFileSync(new URL("../hooks/hooks.json", import.meta.url), "utf8")).hooks;
+  assert.deepEqual(Object.keys(hooks), ["Stop"]);
+});
 
 const PROMPT = "Fix the failing test in auth.test.ts. Update the README to mention the new flag. Thanks, you are doing great.";
 

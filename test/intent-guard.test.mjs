@@ -231,13 +231,11 @@ test("you see a one-line notice whenever Jev adds a note, and nothing otherwise"
   }
 });
 
-test("the hooks that call Jev on every turn show a status label while they run", async () => {
+test("the wired Stop hook shows a status label while it runs", async () => {
   const { readFileSync: read } = await import("node:fs");
   const hooks = JSON.parse(read(new URL("../hooks/hooks.json", import.meta.url), "utf8")).hooks;
   const labels = Object.fromEntries(
     Object.values(hooks).flatMap((groups) => groups.flatMap((g) => g.hooks)).map((h) => [h.command.match(/hooks\/([\w-]+)\.mjs/)[1], h.statusMessage]),
   );
-  assert.equal(labels["intent-guard"], "Jev: checking your prompt");
-  assert.equal(labels["stop-gate"], "Jev: checking the reply");
-  assert.equal(labels["bash-guard"], "Jev: checking the command");
+  assert.deepEqual(labels, { "stop-gate": "Jev: checking the reply" });
 });

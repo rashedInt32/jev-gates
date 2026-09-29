@@ -140,5 +140,7 @@ export const KEY_VAR = ["TYPESAFE", "API", "KEY"].join("_");
 /** Environment for a hook run against a mock, with isolated data and home. */
 export function hookEnv(mock, extra = {}) {
   // Direct calls by default, so request counts are exact; test/broker.test.mjs turns the broker on.
-  return { [KEY_VAR]: "k", JEV_GATES_BASE_URL: mock.url, JEV_GATES_DIR: tempDir("data-"), HOME: tempDir("home-"), JEV_GATES_BROKER: "off", ...extra };
+  // The opt-in gates under test are switched on here; each test can still turn one off.
+  const gates = { JEV_GATES_DONE: "on", JEV_GATES_PROOF: "on", JEV_GATES_INTENT: "on", JEV_GATES_CHECK: "on", JEV_GATES_COMMIT: "on" };
+  return { [KEY_VAR]: "k", JEV_GATES_BASE_URL: mock.url, JEV_GATES_DIR: tempDir("data-"), HOME: tempDir("home-"), JEV_GATES_BROKER: "off", ...gates, ...extra };
 }

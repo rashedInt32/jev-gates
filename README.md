@@ -10,13 +10,15 @@ A live run, nothing staged. Every probability and latency on screen is what Jev 
 | --- | --- | --- |
 | **Rule guard** (opt-in) | every edit, including shell writes | a change that breaks a rule in your CLAUDE.md |
 | **Scope guard** (opt-in) | every edit, including shell writes | a change outside what you asked for |
-| **Intent guard** | every prompt | files edited when you only asked a question |
-| **Prompt check** | every change request | a request missing its outcome, location, finish line, or bug repro |
+| **Intent guard** (opt-in) | every prompt | files edited when you only asked a question |
+| **Prompt check** (opt-in) | every change request | a request missing its outcome, location, finish line, or bug repro |
 | **Bash guard** (opt-in) | shell commands that are not plainly read-only | a destructive or irreversible command before it runs |
-| **Done gate** | every stop | an ask in your prompt left unaddressed |
-| **Claims gate** | every stop | "tests pass" when no test ever ran |
-| **Proof gate** | every stop | a risky change that nothing ran, tested, or checked after the edit |
-| **Commit guard** | `git commit` | a message claiming work the diff does not show |
+| **Done gate** (opt-in) | every stop | an ask in your prompt left unaddressed |
+| **Claims gate** (on by default) | every stop | "tests pass" when no test ever ran |
+| **Proof gate** (opt-in) | every stop | a risky change that nothing ran, tested, or checked after the edit |
+| **Commit guard** (opt-in) | `git commit` | a message claiming work the diff does not show |
+
+From 0.9.0 only the claims gate is on, and the plugin wires only its Stop hook. A week of real sessions showed why. The claims gate caught real overstatements, such as "verified all 22 tickets" when only some were checked live. The intent guard added about 650 ms to every prompt, and its edit asks were mostly on scratch files. Most done and proof blocks landed on turns that were already fine. Every other gate is still here. [Turning on other gates](#turning-on-other-gates) shows how.
 
 Each gate costs about half a second once the connection is warm, and a fraction of a cent. A wrong answer costs one permission prompt or one retry. It never costs a wrong write, a silent skip, or a false claim you believed.
 
@@ -159,12 +161,14 @@ Nine gates do not mean nine requests. The intent guard and prompt check share on
 
 Every hook is a new process, and a new connection spent about 650 ms on TCP and TLS before Jev saw a byte. A small local broker now holds one warm connection: the first hook to find none starts it and calls Jev directly, later hooks send their requests through it over a socket only you can open. It opens its connection as soon as it starts, with a key-free request the API refuses, so even its first forwarded call is warm. It holds no key, refuses requests for any other API, and exits after an idle hour. A hook process now takes about 450 ms instead of about 1,100 ms. `JEV_GATES_BROKER=off` turns it off.
 
+By default only the last row applies.
+
 | Moment | Requests |
 | --- | ---: |
-| You send a prompt | 1 |
+| You send a prompt, with the intent guard or prompt check on | 1 |
 | Claude runs a shell command that is not plainly read-only, with the bash guard on | 1 (cached when the command repeats) |
-| Claude edits a file, with the Edit tool or a shell write | 1 (cached when the change repeats) |
-| Claude runs `git commit` | 1 |
+| Claude edits a file, with the rule or scope guard on | 1 (cached when the change repeats) |
+| Claude runs `git commit`, with the commit guard on | 1 |
 | Claude tries to stop | 1 |
 
 ## Configuration
@@ -174,8 +178,9 @@ Through the environment, for example in the `env` block of `~/.claude/settings.j
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `JEV_GATES` | `active` | `active`, `shadow` (log only), or `off` |
-| `JEV_GATES_INTENT` / `_CHECK` / `_DONE` / `_CLAIMS` / `_PROOF` / `_COMMIT` | on | set any to `off` to disable that gate |
-| `JEV_GATES_RULES` / `_SCOPE` / `_BASH` | off | set to `on` to enable the rule, scope, or bash guard |
+| `JEV_GATES_CLAIMS` | on | `off` disables the claims gate |
+| `JEV_GATES_DONE` / `_PROOF` | off | `on` enables the done or proof gate inside the Stop hook |
+| `JEV_GATES_INTENT` / `_CHECK` / `_COMMIT` / `_RULES` / `_SCOPE` / `_BASH` | off | `on` enables that gate, once its hook is wired (see below) |
 | `JEV_GATES_EDIT_THRESHOLD` | `0.8` | violation probability at or above which the rule guard escalates |
 | `JEV_GATES_EDIT_ACTION` | `ask` | `ask` prompts you; `deny` hands the reason back to Claude |
 | `JEV_GATES_SCOPE_THRESHOLD` | `0.2` | in-scope probability at or below which a change is flagged |
@@ -207,6 +212,22 @@ tail -f ~/.claude/jev-gates/decisions.log
 ```
 
 Lines are tab separated: time, gate, mode, decision, then details. Prompt checks log as `check` with every score, bash decisions as `bash`. `last-edit.json`, `last-scope.json`, `last-intent.json` (which now carries the prompt check scores), `last-done.json`, `last-claims.json`, `last-proof.json`, and `last-commit.json` hold the full scored breakdown of the most recent decision of each kind.
+
+### Turning on other gates
+
+The done and proof gates run inside the Stop hook, so `JEV_GATES_DONE=on` or `JEV_GATES_PROOF=on` is enough.
+
+The other gates need their own hook, which the plugin no longer wires. Add it to `~/.claude/settings.json` and point it at a checkout. The plugin cache path changes with every version. For the intent guard and prompt check:
+
+```json
+"hooks": {
+  "UserPromptSubmit": [
+    { "hooks": [{ "type": "command", "command": "node /path/to/jev-gates/hooks/intent-guard.mjs", "timeout": 8 }] }
+  ]
+}
+```
+
+Then set `JEV_GATES_INTENT=on` or `JEV_GATES_CHECK=on`. The rule and scope guards use `rule-guard.mjs` on PreToolUse for `Edit|Write|MultiEdit` and `Bash`. The bash guard uses `bash-guard.mjs` and the commit guard uses `commit-guard.mjs`, both on PreToolUse for `Bash`.
 
 ## Calibration
 
