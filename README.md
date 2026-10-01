@@ -111,7 +111,7 @@ A Stop hook. Your last prompt is split into candidate asks. Two questions per ca
 
 Shares the Stop request with the done gate. The reply is split into sentences, and each is checked twice: does it positively assert something the assistant did or observed, and does anything support it. Statements about what was *not* done are never treated as claims, because an absence cannot be evidenced. Plain state claims count even without "I": "The working tree was clean.", "All tests pass." Steps written for you to check, such as "Open this link: it shows the job", do not.
 
-The evidence Jev sees is this turn's tool calls and outputs, plus what came back outside them: subagent reports, background task notifications, messages you typed mid-turn, and notices that the tool list changed. Long outputs keep their start and end, where results sit. Long commands fold heredoc bodies, so a `&& git push` after a commit message stays visible. Image results say an image was seen. The assistant's last three replies are included too, because a final reply often restates earlier results. Only replies from turns that ran tools count, minus any sentence the claims gate already flagged, so an unchecked claim cannot vouch for itself. This turn's outputs outrank them, so a rerun that fails cannot be rescued by an earlier "all pass".
+The evidence Jev sees is this turn's tool calls and outputs, plus what came back outside them: subagent reports, background task notifications, messages you typed mid-turn, and notices that the tool list changed. Long outputs keep their start and end, where results sit. Long commands fold heredoc bodies, so a `&& git push` after a commit message stays visible. Image results say an image was seen. The assistant's last three replies are included too, because a final reply often restates earlier results. Only replies from turns that ran tools count, minus any sentence the claims gate already flagged, so an unchecked claim cannot vouch for itself. This turn's outputs outrank them, so a rerun that fails cannot be rescued by an earlier "all pass". A claim that restates a value measured further back, such as a colour, a contrast ratio, a size, or quoted page text, also gets the earlier tool outputs holding that value, as short redacted excerpts. They go to that claim's question only, and an output that merely names the same file or function does not count.
 
 ```
 Claims gate: 1 statement in your reply is not supported by anything you ran this turn:
@@ -179,6 +179,8 @@ Through the environment, for example in the `env` block of `~/.claude/settings.j
 | --- | --- | --- |
 | `JEV_GATES` | `active` | `active`, `shadow` (log only), or `off` |
 | `JEV_GATES_CLAIMS` | on | `off` disables the claims gate |
+| `JEV_GATES_EARLIER_RESULTS` | on | `off` stops the claims gate searching earlier turns' tool outputs |
+| `JEV_GATES_LOOKBACK_BYTES` | `33554432` | how much of the transcript, from the end, that search reads |
 | `JEV_GATES_DONE` / `_PROOF` | off | `on` enables the done or proof gate inside the Stop hook |
 | `JEV_GATES_INTENT` / `_CHECK` / `_COMMIT` / `_RULES` / `_SCOPE` / `_BASH` | off | `on` enables that gate, once its hook is wired (see below) |
 | `JEV_GATES_EDIT_THRESHOLD` | `0.8` | violation probability at or above which the rule guard escalates |
@@ -264,7 +266,7 @@ Two findings worth your attention, both from real sessions rather than fixtures.
 - Rules are whatever your CLAUDE.md says. A rule the model cannot check from the change alone, such as "run the tests before committing", scores low on every edit.
 - Your global `~/.claude/CLAUDE.md` is included. Response-style rules score low on code edits but not zero. Point `JEV_GATES_RULE_FILES` at the files you mean if that is noise.
 - The Stop hook reads the prompt from the transcript file, which can lag. If the prompt is not there yet, the gates have no opinion.
-- The claims gate sees this turn and the last three replies. A result restated from further back, or known only from a long-past session, reads as unsupported and costs one retry.
+- The claims gate sees this turn, the last three replies, and earlier outputs that hold a claim's values. A result restated from further back with no distinctive value in it, a value Claude worked out rather than read from an output, or one known only from a long-past session, reads as unsupported and costs one retry.
 - The claims gate judges sentence by sentence. "No reference survives. The only match left is a sample post." can block on the first sentence even though the second qualifies it.
 - The commit guard reads the staged diff only. A message describing work from an earlier commit will be flagged.
 - The prompt check cannot see attached images. It is told they exist and assumes they show what the prompt points at.

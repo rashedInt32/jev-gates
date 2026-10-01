@@ -454,3 +454,38 @@ test("claims gate: an oversized state drops the earlier replies before skipping 
     await mock.close();
   }
 });
+
+test("claims gate: an earlier output holding a claim's values reaches that claim's question only", async () => {
+  const mock = await startMock(() => 0.9);
+  const dir = tempDir();
+  try {
+    const transcript = writeTranscript(dir, {
+      earlier: [
+        { prompt: "Measure the hover.", ran: "node measure.mjs", result: '{"bg":"#9bd5e1","color":"#373266"}', reply: "Measured." },
+        "Thanks.",
+        "Anything else?",
+        "One more thing.",
+      ],
+      prompt: "Summarise the state.",
+      tools: [{ name: "Bash", input: { command: "git status --short" }, result: "" }],
+    });
+    const message = "Hover is #9bd5e1 with #373266 text. The build is green.";
+    const run = await runHook("stop-gate.mjs", stopInput(transcript, { last_assistant_message: message }), { ...hookEnv(mock), JEV_GATES_DONE: "off" });
+    assert.equal(run.code, 0);
+
+    const { state, questions } = mock.requests[0];
+    assert.equal("earlier_tool_results" in state, false, "never in the shared state");
+    const [item] = questions.evidence0.instructions.earlier_tool_results;
+    assert.equal(item.turns_ago, 4);
+    assert.match(item.excerpt, /#9bd5e1/);
+    assert.match(questions.evidence0.instructions.task, /this question's earlier_tool_results/);
+    assert.equal("earlier_tool_results" in questions.evidence1.instructions, false);
+    assert.doesNotMatch(questions.evidence1.instructions.task, /earlier_tool_results/, "an unmatched claim keeps the 0.9.0 wording");
+
+    const off = await runHook("stop-gate.mjs", stopInput(transcript, { last_assistant_message: message }), { ...hookEnv(mock), JEV_GATES_DONE: "off", JEV_GATES_EARLIER_RESULTS: "off" });
+    assert.equal(off.code, 0);
+    assert.equal("earlier_tool_results" in mock.requests[1].questions.evidence0.instructions, false, "the off switch sends none");
+  } finally {
+    await mock.close();
+  }
+});

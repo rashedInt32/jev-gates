@@ -102,15 +102,16 @@ export function writeTranscript(dir, { prompt, tools = [], assistantText = "", e
   const lines = [];
   let n = 0;
   const push = (o) => lines.push(JSON.stringify({ uuid: `u${n++}`, sessionId: "s", ...o }));
-  // An earlier turn is a prompt string, or { prompt, reply, ran, feedback }:
-  // `ran` gives it a tool call, `feedback` a Stop hook block and a second reply.
+  // An earlier turn is a prompt string, or { prompt, reply, ran, result, feedback }:
+  // `ran` gives it a tool call with `result` as its output, `feedback` a Stop
+  // hook block and a second reply.
   for (const turn of earlier) {
-    const { prompt: text, reply = "ok", ran = false, feedback } = typeof turn === "string" ? { prompt: turn } : turn;
+    const { prompt: text, reply = "ok", ran = false, result = "done", feedback } = typeof turn === "string" ? { prompt: turn } : turn;
     push({ type: "user", message: { role: "user", content: text } });
     if (ran) {
       const id = `t${n}`;
       push({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id, name: "Bash", input: { command: ran } }] } });
-      push({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: "done" }] } });
+      push({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: result }] } });
     }
     push({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: reply }] } });
     if (feedback) {
